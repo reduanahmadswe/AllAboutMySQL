@@ -1,29 +1,86 @@
 # 📚 All About MySQL - Complete SQL Learning Guide
 
-A comprehensive guide to SQL and MySQL database concepts in Bangla (বাংলা) and English.
+> A comprehensive guide to SQL and MySQL database concepts in Bangla (বাংলা) and English.  
+> 🌟 **Perfect for beginners to advanced developers** | 💡 **Real-world examples** | 🚀 **Interview ready**
 
 ---
 
 ## 📑 Table of Contents
 
-1. [Introduction to SQL & MySQL](#introduction)
-2. [Database Basics](#database-basics)
-3. [Data Types](#data-types)
-4. [DDL - Data Definition Language](#ddl-commands)
-5. [DML - Data Manipulation Language](#dml-commands)
-6. [DQL - Data Query Language](#dql-commands)
-7. [Constraints](#constraints)
-8. [Operators](#operators)
-9. [Functions](#functions)
-10. [Joins](#joins)
-11. [Subqueries](#subqueries)
-12. [Views](#views)
-13. [Indexes](#indexes)
-14. [Transactions](#transactions)
-15. [Stored Procedures & Functions](#stored-procedures)
-16. [Triggers](#triggers)
-17. [Performance Optimization](#performance-optimization)
-18. [Interview Questions](#interview-questions)
+### 🎯 **Core Concepts**
+- [📖 Introduction to SQL & MySQL](#introduction)
+  - SQL কি? | RDBMS | MySQL Features
+  - SQL vs NoSQL Databases
+  - Basic SQL Syntax & Keywords
+  - PostgreSQL Basics
+- [🗄️ Database Basics](#database-basics)
+  - CREATE, USE, SHOW, DROP Database
+- [📊 Data Types](#data-types)
+  - Numeric, String, Date/Time, Binary Types
+
+### 🔨 **SQL Commands**
+- [🔨 DDL - Data Definition Language](#ddl-commands)
+  - CREATE, ALTER, DROP, TRUNCATE, RENAME
+- [📝 DML - Data Manipulation Language](#dml-commands)
+  - INSERT, UPDATE, DELETE Operations
+- [🔍 DQL - Data Query Language](#dql-commands)
+  - SELECT, WHERE, ORDER BY, GROUP BY, HAVING
+
+### 🛡️ **Database Features**
+- [🔐 Constraints](#constraints)
+  - PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL, CHECK, DEFAULT
+- [⚙️ Operators](#operators)
+  - Arithmetic, Comparison, Logical, Special Operators
+- [📊 Functions](#functions)
+  - String, Numeric, Date/Time, Aggregate Functions
+
+### 🔗 **Advanced Queries**
+- [🔗 Joins](#joins)
+  - INNER, LEFT, RIGHT, FULL OUTER, CROSS, SELF Joins
+- [🔍 Subqueries](#subqueries)
+  - Single-row, Multi-row, Correlated Subqueries
+- [👁️ Views](#views)
+  - Creating and Managing Views
+- [📋 Common Table Expressions (CTEs)](#common-table-expressions-ctes)
+  - WITH clause, Recursive CTEs
+- [🪟 Window Functions](#window-functions-advanced-sql)
+  - ROW_NUMBER, RANK, DENSE_RANK, LEAD, LAG, Running Totals
+
+### 🚀 **Performance & Optimization**
+- [📑 Indexes](#indexes)
+  - Creating and Managing Indexes
+- [💾 Transactions](#transactions)
+  - ACID Properties, COMMIT, ROLLBACK, SAVEPOINT
+- [🚀 Performance Optimization & Query Analysis](#performance-optimization)
+  - EXPLAIN, Query Optimization Tips
+
+### 🔧 **Advanced Features**
+- [🔧 Stored Procedures & Functions](#stored-procedures)
+  - Creating and Using Procedures
+- [⚡ Triggers](#triggers)
+  - BEFORE, AFTER Triggers
+- [🔄 Pivot and Unpivot Operations](#pivot-and-unpivot-operations)
+  - Dynamic Pivoting
+- [🔧 Dynamic SQL](#dynamic-sql)
+  - Prepared Statements
+
+### 📚 **Additional Resources**
+- [🎓 Interview Questions](#interview-questions)
+  - 500+ Common SQL Interview Q&A
+- [📚 Advanced Topics](#advanced-topics)
+  - Replication, Sharding, Partitioning
+- [🛠️ Database Design Best Practices](#database-design-best-practices)
+  - Normalization, ER Diagrams
+- [🔐 Data Integrity & Security](#data-integrity--security)
+  - User Management, Permissions
+- [📊 Backup & Recovery](#backup--recovery)
+  - mysqldump, Restore Strategies
+- [💡 Tips & Tricks](#tips--tricks)
+  - Pro Tips for Better Performance
+- [📖 Learning Resources](#learning-resources)
+  - Books, Courses, Documentation
+- [🎯 SQL Checklist](#sql-checklist)
+  - Complete Learning Path
 
 ---
 
