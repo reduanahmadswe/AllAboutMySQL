@@ -3,84 +3,284 @@
 > A comprehensive guide to SQL and MySQL database concepts in Bangla (বাংলা) and English.  
 > 🌟 **Perfect for beginners to advanced developers** | 💡 **Real-world examples** | 🚀 **Interview ready**
 
+[![GitHub stars](https://img.shields.io/github/stars/reduanahmadswe/AllAboutMySQL?style=social)](https://github.com/reduanahmadswe/AllAboutMySQL)
+[![GitHub forks](https://img.shields.io/github/forks/reduanahmadswe/AllAboutMySQL?style=social)](https://github.com/reduanahmadswe/AllAboutMySQL/fork)
+[![GitHub issues](https://img.shields.io/github/issues/reduanahmadswe/AllAboutMySQL)](https://github.com/reduanahmadswe/AllAboutMySQL/issues)
+
 ---
 
 ## 📑 Table of Contents
 
+> **💡 Tip:** এই repository টি modular structure এ সাজানো হয়েছে। প্রতিটি topic এর জন্য আলাদা folder রয়েছে যেখানে বিস্তারিত examples এবং explanations দেওয়া আছে।
+
 ### 🎯 **Core Concepts**
-- [📖 Introduction to SQL & MySQL](#introduction)
-  - SQL কি? | RDBMS | MySQL Features
-  - SQL vs NoSQL Databases
-  - Basic SQL Syntax & Keywords
-  - PostgreSQL Basics
-- [🗄️ Database Basics](#database-basics)
-  - CREATE, USE, SHOW, DROP Database
-- [📊 Data Types](#data-types)
-  - Numeric, String, Date/Time, Binary Types
+
+#### 📖 [Introduction to SQL & MySQL](./docs/01-introduction/README.md)
+- SQL কি? | RDBMS কি?
+- MySQL Features
+- SQL vs NoSQL Databases Comparison
+- Basic SQL Syntax
+- SQL Keywords Reference
+- PostgreSQL Basics
+
+#### 🗄️ [Database Basics](./docs/02-database-basics/README.md)
+- CREATE Database
+- USE Database
+- SHOW Databases
+- DROP Database
+- Database Information
+
+#### 📊 [Data Types](./docs/03-data-types/README.md)
+- Numeric Types (INT, BIGINT, DECIMAL, FLOAT)
+- String Types (VARCHAR, TEXT, CHAR)
+- Date/Time Types (DATE, DATETIME, TIMESTAMP)
+- Binary Types (BLOB, BINARY)
+
+---
 
 ### 🔨 **SQL Commands**
-- [🔨 DDL - Data Definition Language](#ddl-commands)
-  - CREATE, ALTER, DROP, TRUNCATE, RENAME
-- [📝 DML - Data Manipulation Language](#dml-commands)
-  - INSERT, UPDATE, DELETE Operations
-- [🔍 DQL - Data Query Language](#dql-commands)
-  - SELECT, WHERE, ORDER BY, GROUP BY, HAVING
+
+#### 🔨 [DDL - Data Definition Language](./docs/04-ddl-commands/README.md)
+- CREATE TABLE
+- ALTER TABLE
+- DROP TABLE
+- TRUNCATE TABLE
+- RENAME TABLE
+
+#### 📝 [DML - Data Manipulation Language](#dml-commands)
+- INSERT INTO
+- UPDATE
+- DELETE
+- Batch Operations
+
+#### 🔍 [DQL - Data Query Language](#dql-commands)
+- SELECT Statements
+- WHERE Clause
+- ORDER BY
+- GROUP BY & HAVING
+- LIMIT & OFFSET
+
+---
 
 ### 🛡️ **Database Features**
-- [🔐 Constraints](#constraints)
-  - PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL, CHECK, DEFAULT
-- [⚙️ Operators](#operators)
-  - Arithmetic, Comparison, Logical, Special Operators
-- [📊 Functions](#functions)
-  - String, Numeric, Date/Time, Aggregate Functions
+
+#### 🔐 [Constraints](#constraints)
+- PRIMARY KEY
+- FOREIGN KEY
+- UNIQUE
+- NOT NULL
+- CHECK
+- DEFAULT
+
+#### ⚙️ [Operators](#operators)
+- Comparison Operators (=, !=, >, <)
+- Logical Operators (AND, OR, NOT)
+- Special Operators (IN, BETWEEN, LIKE)
+
+#### 📊 [Functions](#functions)
+- String Functions
+- Numeric Functions
+- Date/Time Functions
+- Aggregate Functions
+
+---
 
 ### 🔗 **Advanced Queries**
-- [🔗 Joins](#joins)
-  - INNER, LEFT, RIGHT, FULL OUTER, CROSS, SELF Joins
-- [🔍 Subqueries](#subqueries)
-  - Single-row, Multi-row, Correlated Subqueries
-- [👁️ Views](#views)
-  - Creating and Managing Views
-- [📋 Common Table Expressions (CTEs)](#common-table-expressions-ctes)
-  - WITH clause, Recursive CTEs
-- [🪟 Window Functions](#window-functions-advanced-sql)
-  - ROW_NUMBER, RANK, DENSE_RANK, LEAD, LAG, Running Totals
+
+#### 🔗 [Joins](./docs/06-joins/README.md)
+- INNER JOIN
+- LEFT JOIN
+- RIGHT JOIN
+- FULL OUTER JOIN
+- CROSS JOIN
+- SELF JOIN
+
+#### 🔍 [Subqueries](#subqueries)
+- Single-row Subqueries
+- Multi-row Subqueries
+- Correlated Subqueries
+- EXISTS, IN, ANY, ALL
+
+#### 👁️ [Views](#views)
+- Creating Views
+- Modifying Views
+- Updatable Views
+- Dropping Views
+
+#### 📋 [Common Table Expressions (CTEs)](#common-table-expressions-ctes)
+- Simple CTEs
+- Multiple CTEs
+- Recursive CTEs
+- CTEs with Aggregations
+
+#### 🪟 [Window Functions](#window-functions-advanced-sql)
+- ROW_NUMBER(), RANK(), DENSE_RANK()
+- LAG(), LEAD()
+- FIRST_VALUE(), LAST_VALUE()
+- Running Totals & Moving Averages
+
+---
 
 ### 🚀 **Performance & Optimization**
-- [📑 Indexes](#indexes)
-  - Creating and Managing Indexes
-- [💾 Transactions](#transactions)
-  - ACID Properties, COMMIT, ROLLBACK, SAVEPOINT
-- [🚀 Performance Optimization & Query Analysis](#performance-optimization)
-  - EXPLAIN, Query Optimization Tips
+
+#### 📑 [Indexes](#indexes)
+- Creating Indexes
+- Composite Indexes
+- Index Optimization
+- When to Use Indexes
+
+#### 💾 [Transactions](#transactions)
+- ACID Properties
+- BEGIN/START TRANSACTION
+- COMMIT & ROLLBACK
+- SAVEPOINT
+- Isolation Levels
+
+#### 🚀 [Performance Optimization](./docs/07-performance/README.md)
+- EXPLAIN & EXPLAIN ANALYZE
+- Index Optimization Strategies
+- Query Optimization Techniques
+- Performance Monitoring
+- Slow Query Log
+
+---
 
 ### 🔧 **Advanced Features**
-- [🔧 Stored Procedures & Functions](#stored-procedures)
-  - Creating and Using Procedures
-- [⚡ Triggers](#triggers)
-  - BEFORE, AFTER Triggers
-- [🔄 Pivot and Unpivot Operations](#pivot-and-unpivot-operations)
-  - Dynamic Pivoting
-- [🔧 Dynamic SQL](#dynamic-sql)
-  - Prepared Statements
+
+#### 🔧 [Stored Procedures & Functions](#stored-procedures)
+- Creating Procedures
+- IN/OUT Parameters
+- Functions vs Procedures
+
+#### ⚡ [Triggers](#triggers)
+- BEFORE Triggers
+- AFTER Triggers
+- INSERT/UPDATE/DELETE Triggers
+
+#### 🔄 [Pivot and Unpivot](#pivot-and-unpivot-operations)
+- Dynamic Pivoting
+- Unpivot Operations
+
+#### 🔧 [Dynamic SQL](#dynamic-sql)
+- PREPARE, EXECUTE, DEALLOCATE
+- Dynamic Queries
+- Security Considerations
+
+---
 
 ### 📚 **Additional Resources**
-- [🎓 Interview Questions](#interview-questions)
-  - 500+ Common SQL Interview Q&A
-- [📚 Advanced Topics](#advanced-topics)
-  - Replication, Sharding, Partitioning
-- [🛠️ Database Design Best Practices](#database-design-best-practices)
-  - Normalization, ER Diagrams
-- [🔐 Data Integrity & Security](#data-integrity--security)
-  - User Management, Permissions
-- [📊 Backup & Recovery](#backup--recovery)
-  - mysqldump, Restore Strategies
-- [💡 Tips & Tricks](#tips--tricks)
-  - Pro Tips for Better Performance
-- [📖 Learning Resources](#learning-resources)
-  - Books, Courses, Documentation
-- [🎯 SQL Checklist](#sql-checklist)
-  - Complete Learning Path
+
+#### 🎓 [Interview Questions](./docs/08-interview-questions/README.md)
+- **500+ Questions** with Answers
+- Basic Level Questions
+- Intermediate Level Questions
+- Advanced Level Questions
+- Real-world Scenarios
+
+#### 📚 [Advanced Topics](#advanced-topics)
+- Database Replication
+- Sharding
+- Partitioning
+
+#### 🛠️ [Database Design Best Practices](#database-design-best-practices)
+- Normalization (1NF, 2NF, 3NF)
+- ER Diagrams
+- Schema Design
+
+#### 🔐 [Data Integrity & Security](#data-integrity--security)
+- User Management
+- GRANT/REVOKE Permissions
+- SQL Injection Prevention
+
+#### 📊 [Backup & Recovery](#backup--recovery)
+- mysqldump Usage
+- Restore Strategies
+- Point-in-Time Recovery
+
+#### 💡 [Tips & Tricks](#tips--tricks)
+- Performance Tips
+- Best Practices
+- Common Pitfalls
+
+---
+
+## 🚀 Quick Start
+
+### 1. Clone this repository
+```bash
+git clone https://github.com/reduanahmadswe/AllAboutMySQL.git
+cd AllAboutMySQL
+```
+
+### 2. Navigate to any topic
+```bash
+# Example: Learn about Joins
+cd docs/06-joins
+# Open README.md in your preferred editor
+```
+
+### 3. Follow along with examples
+প্রতিটি section এ complete examples এবং explanations দেওয়া আছে যা আপনি সরাসরি MySQL/PostgreSQL এ run করতে পারবেন।
+
+---
+
+## 📂 Repository Structure
+
+```
+AllAboutMySQL/
+├── README.md                          # Main documentation (this file)
+├── docs/
+│   ├── 01-introduction/
+│   │   └── README.md                  # SQL & MySQL Introduction
+│   ├── 02-database-basics/
+│   │   └── README.md                  # Database Operations
+│   ├── 03-data-types/
+│   │   └── README.md                  # Data Types Reference
+│   ├── 04-ddl-commands/
+│   │   └── README.md                  # DDL Commands
+│   ├── 05-dml-commands/
+│   │   └── README.md                  # DML Commands (coming soon)
+│   ├── 06-joins/
+│   │   └── README.md                  # All About Joins
+│   ├── 07-performance/
+│   │   └── README.md                  # Performance Optimization
+│   ├── 08-interview-questions/
+│   │   └── README.md                  # Interview Questions
+│   └── ... (more topics)
+└── examples/
+    ├── sample-database.sql            # Sample database for practice
+    └── practice-queries.sql           # Practice exercises
+```
+
+---
+
+## 🎯 Learning Path
+
+### **Beginner Level** (1-2 weeks)
+1. [Introduction](./docs/01-introduction/README.md) - SQL basics, MySQL features
+2. [Database Basics](./docs/02-database-basics/README.md) - Create, use databases
+3. [Data Types](./docs/03-data-types/README.md) - Understanding data types
+4. [DDL Commands](./docs/04-ddl-commands/README.md) - Table operations
+5. Basic DML operations
+
+### **Intermediate Level** (2-3 weeks)
+1. Advanced queries (WHERE, GROUP BY, HAVING)
+2. [Joins](./docs/06-joins/README.md) - All types of joins
+3. Subqueries and CTEs
+4. Functions (String, Date, Numeric)
+5. Views and Indexes
+
+### **Advanced Level** (3-4 weeks)
+1. Window Functions
+2. [Performance Optimization](./docs/07-performance/README.md)
+3. Transactions and Isolation Levels
+4. Stored Procedures & Triggers
+5. Database Design Best Practices
+
+### **Interview Preparation** (1-2 weeks)
+1. [Interview Questions](./docs/08-interview-questions/README.md)
+2. Practice complex queries
+3. Solve real-world problems
 
 ---
 
@@ -7447,39 +7647,141 @@ FROM employees;
 
 ---
 
+## 💻 Practice Resources
+
+### Sample Database
+একটি complete sample database setup করতে:
+```bash
+# Coming soon: sample-database.sql
+mysql -u root -p < examples/sample-database.sql
+```
+
+### Practice Exercises
+প্রতিটি topic এর জন্য practice questions আছে। শুরু করুন:
+1. Basic queries থেকে শুরু করুন
+2. প্রতিদিন অন্তত 5টি query practice করুন
+3. Complex queries তে move করুন
+4. Real-world scenarios solve করুন
+
+---
+
+## 📈 Progress Tracking
+
+নিচের checklist ব্যবহার করে আপনার progress track করুন:
+
+- [ ] SQL Basics & Introduction
+- [ ] Database Operations (CREATE, USE, DROP)
+- [ ] Data Types mastered
+- [ ] DDL Commands (CREATE TABLE, ALTER, DROP)
+- [ ] DML Commands (INSERT, UPDATE, DELETE)
+- [ ] SELECT queries with WHERE, ORDER BY
+- [ ] GROUP BY and HAVING
+- [ ] All types of JOINs
+- [ ] Subqueries
+- [ ] Views
+- [ ] CTEs (Common Table Expressions)
+- [ ] Window Functions
+- [ ] Indexes and Performance
+- [ ] Transactions
+- [ ] Stored Procedures
+- [ ] Triggers
+- [ ] Interview Questions Practice
+
+---
+
 ## 🤝 Contributing
 
-এই রেপোজিটরিতে কন্ট্রিবিউট করতে চাইলে:
+এই repository কে আরও ভালো করতে আপনার contribution স্বাগতম!
 
-1. Fork করুন
-2. নতুন branch তৈরি করুন
-3. পরিবর্তন করুন
-4. Pull Request পাঠান
+### How to Contribute:
+
+1. **Fork** this repository
+2. Create a new **branch** (`git checkout -b feature/AmazingFeature`)
+3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** to the branch (`git push origin feature/AmazingFeature`)
+5. Open a **Pull Request**
+
+### Contribution Ideas:
+- ✅ Add more examples
+- ✅ Translate content to other languages
+- ✅ Fix typos or errors
+- ✅ Add practice exercises
+- ✅ Improve documentation
+- ✅ Add video tutorials links
+- ✅ Share real-world use cases
+
+---
+
+## 📧 Contact & Support
+
+### Questions or Feedback?
+- **GitHub Issues:** [Create an issue](https://github.com/reduanahmadswe/AllAboutMySQL/issues)
+- **Discussions:** [Join discussions](https://github.com/reduanahmadswe/AllAboutMySQL/discussions)
+
+### Found this helpful?
+- ⭐ **Star** this repository
+- 🔀 **Fork** it for your own learning
+- 📢 **Share** with others who might benefit
 
 ---
 
 ## 📜 License
 
-This project is open source and available under the [MIT License](LICENSE).
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+এর মানে আপনি freely:
+- ✅ Use করতে পারবেন
+- ✅ Modify করতে পারবেন
+- ✅ Distribute করতে পারবেন
+- ✅ Commercial purposes এ use করতে পারবেন
 
 ---
 
 ## 👨‍💻 Author
 
 **Reduan Ahmad**
-
-- GitHub: [@reduanahmadswe](https://github.com/reduanahmadswe)
-
----
-
-## 🌟 Star this Repository
-
-যদি এই রেপোজিটরি আপনার কাজে লাগে, তাহলে একটি ⭐ দিন!
+- 🌐 GitHub: [@reduanahmadswe](https://github.com/reduanahmadswe)
+- 💼 LinkedIn: [Connect with me](https://linkedin.com/in/reduanahmadswe)
+- 📧 Email: [Contact](mailto:reduanahmadswe@gmail.com)
 
 ---
 
-**Happy Learning! 🚀📚**
+## 🙏 Acknowledgments
+
+ধন্যবাদ:
+- All contributors যারা এই project কে improve করেছেন
+- MySQL এবং PostgreSQL communities
+- সকল developers যারা open source এ contribute করেন
 
 ---
 
-*Last Updated: November 21, 2025*
+## 🌟 Star History
+
+যদি এই repository আপনার কাজে লাগে, তাহলে একটা ⭐ দিয়ে সাপোর্ট করুন!
+
+[![Star History Chart](https://api.star-history.com/svg?repos=reduanahmadswe/AllAboutMySQL&type=Date)](https://star-history.com/#reduanahmadswe/AllAboutMySQL&Date)
+
+---
+
+## 📊 Repository Stats
+
+![GitHub repo size](https://img.shields.io/github/repo-size/reduanahmadswe/AllAboutMySQL)
+![GitHub language count](https://img.shields.io/github/languages/count/reduanahmadswe/AllAboutMySQL)
+![GitHub top language](https://img.shields.io/github/languages/top/reduanahmadswe/AllAboutMySQL)
+![GitHub last commit](https://img.shields.io/github/last-commit/reduanahmadswe/AllAboutMySQL)
+
+---
+
+<div align="center">
+
+### Made with ❤️ by [Reduan Ahmad](https://github.com/reduanahmadswe)
+
+**Happy Learning! 🚀**
+
+[⬆ Back to Top](#-all-about-mysql---complete-sql-learning-guide)
+
+</div>
+
+---
+
+*Last Updated: November 22, 2025*
