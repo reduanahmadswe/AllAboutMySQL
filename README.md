@@ -2602,71 +2602,2623 @@ DROP TRIGGER IF EXISTS before_employee_insert;
 
 ---
 
-## 🚀 Performance Optimization {#performance-optimization}
+## 🚀 Performance Optimization & Query Analysis {#performance-optimization}
 
-### Query Optimization Tips
+Query performance খারাপ হওয়ার কারণে slow response time, high resource usage এবং poor user experience হতে পারে। এই section-এ comprehensive optimization techniques দেওয়া হলো।
 
-#### ✅ 1. Index ব্যবহার করুন
+---
 
+### 📊 EXPLAIN and EXPLAIN ANALYZE
+
+**EXPLAIN** query execution plan দেখায় - MySQL কীভাবে query execute করবে।
+**EXPLAIN ANALYZE** actual execution করে এবং real timing data দেখায় (MySQL 8.0.18+)।
+
+**Easy Example 1: Basic EXPLAIN**
 ```sql
-CREATE INDEX idx_department ON employees(department);
+EXPLAIN SELECT * FROM employees WHERE department = 'IT';
+
+-- Output columns:
+-- id: Query identifier
+-- select_type: SIMPLE, PRIMARY, SUBQUERY, etc.
+-- table: Table name
+-- type: Join type (ALL, index, range, ref, eq_ref, const)
+-- possible_keys: Indexes that could be used
+-- key: Actually used index
+-- rows: Estimated rows to examine
+-- Extra: Additional information
 ```
 
-#### ✅ 2. SELECT * এড়িয়ে চলুন
-
+**Easy Example 2: EXPLAIN with JOIN**
 ```sql
--- ❌ Bad
+EXPLAIN SELECT e.name, d.department_name
+FROM employees e
+INNER JOIN departments d ON e.department_id = d.id
+WHERE e.salary > 50000;
+
+-- Look for:
+-- type: Should be 'ref' or 'eq_ref' (good), not 'ALL' (bad - full table scan)
+-- key: Should show index usage
+-- rows: Lower is better
+```
+
+**Complex Example: Query optimization workflow**
+```sql
+-- Step 1: Check current performance
+EXPLAIN SELECT 
+    o.order_id,
+    c.customer_name,
+    p.product_name,
+    oi.quantity,
+    oi.price
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id
+WHERE o.order_date >= '2024-01-01'
+    AND o.status = 'Completed'
+    AND p.category = 'Electronics';
+
+-- If showing 'ALL' or 'index' in type column, add indexes:
+
+-- Step 2: Add strategic indexes
+CREATE INDEX idx_orders_date_status ON orders(order_date, status);
+CREATE INDEX idx_products_category ON products(category);
+CREATE INDEX idx_order_items_order ON order_items(order_id);
+CREATE INDEX idx_order_items_product ON order_items(product_id);
+
+-- Step 3: Verify improvement
+EXPLAIN SELECT 
+    o.order_id,
+    c.customer_name,
+    p.product_name,
+    oi.quantity,
+    oi.price
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id
+WHERE o.order_date >= '2024-01-01'
+    AND o.status = 'Completed'
+    AND p.category = 'Electronics';
+
+-- Step 4: Use EXPLAIN ANALYZE for actual timing (MySQL 8.0.18+)
+EXPLAIN ANALYZE SELECT 
+    o.order_id,
+    c.customer_name,
+    p.product_name,
+    oi.quantity,
+    oi.price
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id
+WHERE o.order_date >= '2024-01-01'
+    AND o.status = 'Completed'
+    AND p.category = 'Electronics';
+```
+
+**EXPLAIN type column values (best to worst):**
+```
+system     - Table has only one row (best)
+const      - Single row match via PRIMARY KEY or UNIQUE
+eq_ref     - One row read for each combination (PRIMARY KEY/UNIQUE index)
+ref        - Multiple rows with matching index value (good)
+range      - Index scan with range (BETWEEN, >, <)
+index      - Full index scan (better than ALL)
+ALL        - Full table scan (worst - avoid this!)
+```
+
+---
+
+### 🎯 Index Optimization Strategies
+
+**Easy Example 1: Single column index**
+```sql
+-- Create index on frequently queried column
+CREATE INDEX idx_employee_department ON employees(department);
+
+-- Check index usage
+EXPLAIN SELECT * FROM employees WHERE department = 'IT';
+-- Should show: key = idx_employee_department, type = ref
+```
+
+**Easy Example 2: Composite index**
+```sql
+-- Composite index for multiple column queries
+CREATE INDEX idx_emp_dept_salary ON employees(department, salary);
+
+-- This index will be used for:
+SELECT * FROM employees WHERE department = 'IT' AND salary > 50000; -- ✅ Both columns
+SELECT * FROM employees WHERE department = 'IT'; -- ✅ First column only
+
+-- But NOT for:
+SELECT * FROM employees WHERE salary > 50000; -- ❌ Skips first column (leftmost prefix rule)
+```
+
+**Complex Example: Index strategy for complex queries**
+```sql
+-- Analyze query patterns
+-- Query 1: Search by customer and date range
+SELECT * FROM orders 
+WHERE customer_id = 123 
+    AND order_date BETWEEN '2024-01-01' AND '2024-12-31';
+
+-- Query 2: Search by status and date
+SELECT * FROM orders 
+WHERE status = 'Pending' 
+    AND order_date >= '2024-01-01';
+
+-- Query 3: Get customer's recent orders
+SELECT * FROM orders 
+WHERE customer_id = 123 
+ORDER BY order_date DESC 
+LIMIT 10;
+
+-- Optimal index strategy:
+CREATE INDEX idx_orders_customer_date ON orders(customer_id, order_date DESC);
+-- ✅ Covers Query 1 completely
+-- ✅ Covers Query 3 with ORDER BY
+
+CREATE INDEX idx_orders_status_date ON orders(status, order_date);
+-- ✅ Covers Query 2
+
+-- Verify with EXPLAIN
+EXPLAIN SELECT * FROM orders 
+WHERE customer_id = 123 
+    AND order_date BETWEEN '2024-01-01' AND '2024-12-31';
+-- Should show: type=range, key=idx_orders_customer_date
+
+-- Check index usage statistics
+SELECT 
+    TABLE_NAME,
+    INDEX_NAME,
+    SEQ_IN_INDEX,
+    COLUMN_NAME,
+    CARDINALITY
+FROM information_schema.STATISTICS
+WHERE TABLE_SCHEMA = 'your_database'
+    AND TABLE_NAME = 'orders'
+ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;
+```
+
+**Covering Index Example:**
+```sql
+-- Create covering index (includes all columns needed by query)
+CREATE INDEX idx_covering ON employees(department, salary, name, id);
+
+-- This query doesn't need to access table (index-only scan)
+EXPLAIN SELECT id, name, salary 
+FROM employees 
+WHERE department = 'IT' AND salary > 50000;
+-- Extra: Using index condition
+```
+
+---
+
+### ⚡ Query Optimization Techniques
+
+**1. Selective Projection - Avoid SELECT ***
+
+**Easy Example:**
+```sql
+-- ❌ BAD: Fetches all columns (wastes I/O and memory)
 SELECT * FROM employees;
 
--- ✅ Good
-SELECT name, salary FROM employees;
+-- ✅ GOOD: Fetch only needed columns
+SELECT id, name, email FROM employees;
+
+-- Impact: If table has 20 columns but you need only 3,
+-- you save ~85% of data transfer and processing
 ```
 
-#### ✅ 3. LIMIT ব্যবহার করুন
+**2. Reduce Subqueries - Use JOINs**
 
+**Easy Example:**
 ```sql
-SELECT * FROM employees ORDER BY salary DESC LIMIT 10;
+-- ❌ SLOW: Subquery executed for each row
+SELECT name, 
+    (SELECT department_name FROM departments d WHERE d.id = e.department_id) AS dept
+FROM employees e;
+
+-- ✅ FAST: Single JOIN operation
+SELECT e.name, d.department_name
+FROM employees e
+JOIN departments d ON e.department_id = d.id;
 ```
 
-#### ✅ 4. JOIN এর পরিবর্তে EXISTS ব্যবহার করুন
-
+**Complex Example:**
 ```sql
--- ✅ Better Performance
+-- ❌ SLOW: Multiple subqueries
+SELECT 
+    e.name,
+    e.salary,
+    (SELECT AVG(salary) FROM employees WHERE department = e.department) AS dept_avg,
+    (SELECT COUNT(*) FROM orders WHERE employee_id = e.id) AS order_count,
+    (SELECT SUM(amount) FROM sales WHERE employee_id = e.id) AS total_sales
+FROM employees e
+WHERE e.status = 'Active';
+
+-- ✅ FAST: Pre-aggregate with CTEs and JOIN
+WITH dept_averages AS (
+    SELECT department, AVG(salary) AS avg_salary
+    FROM employees
+    GROUP BY department
+),
+employee_orders AS (
+    SELECT employee_id, COUNT(*) AS order_count
+    FROM orders
+    GROUP BY employee_id
+),
+employee_sales AS (
+    SELECT employee_id, SUM(amount) AS total_sales
+    FROM sales
+    GROUP BY employee_id
+)
+SELECT 
+    e.name,
+    e.salary,
+    da.avg_salary AS dept_avg,
+    COALESCE(eo.order_count, 0) AS order_count,
+    COALESCE(es.total_sales, 0) AS total_sales
+FROM employees e
+LEFT JOIN dept_averages da ON e.department = da.department
+LEFT JOIN employee_orders eo ON e.id = eo.employee_id
+LEFT JOIN employee_sales es ON e.id = es.employee_id
+WHERE e.status = 'Active';
+```
+
+**3. Use EXISTS instead of IN for large subqueries**
+
+**Easy Example:**
+```sql
+-- ❌ SLOW: IN with large subquery (loads all IDs into memory)
+SELECT name FROM employees
+WHERE department_id IN (
+    SELECT id FROM departments WHERE region = 'Asia' -- Returns 10,000 IDs
+);
+
+-- ✅ FAST: EXISTS stops at first match
 SELECT name FROM employees e
 WHERE EXISTS (
-    SELECT 1 FROM departments d WHERE d.id = e.department_id
+    SELECT 1 FROM departments d 
+    WHERE d.id = e.department_id AND d.region = 'Asia'
 );
 ```
 
-#### ✅ 5. Subquery এর পরিবর্তে JOIN ব্যবহার করুন
+**4. Limit Result Sets**
 
+**Easy Example:**
 ```sql
--- ❌ Slower
-SELECT name FROM employees
-WHERE department_id IN (SELECT id FROM departments WHERE location = 'Dhaka');
+-- ❌ BAD: Returns millions of rows
+SELECT * FROM log_table WHERE log_date >= '2024-01-01';
 
--- ✅ Faster
-SELECT e.name 
-FROM employees e
-INNER JOIN departments d ON e.department_id = d.id
-WHERE d.location = 'Dhaka';
+-- ✅ GOOD: Limit results
+SELECT * FROM log_table 
+WHERE log_date >= '2024-01-01'
+ORDER BY log_date DESC
+LIMIT 1000;
+
+-- ✅ BETTER: Paginate
+SELECT * FROM log_table 
+WHERE log_date >= '2024-01-01'
+ORDER BY log_date DESC
+LIMIT 1000 OFFSET 0;  -- Page 1
 ```
 
-### EXPLAIN - Query Analysis
+**5. Optimize WHERE Clauses**
+
+**Easy Example:**
+```sql
+-- ❌ BAD: Function on indexed column prevents index usage
+SELECT * FROM employees WHERE YEAR(join_date) = 2024;
+
+-- ✅ GOOD: Keep column untransformed
+SELECT * FROM employees 
+WHERE join_date >= '2024-01-01' AND join_date < '2025-01-01';
+
+-- ❌ BAD: Leading wildcard prevents index usage
+SELECT * FROM products WHERE name LIKE '%phone%';
+
+-- ✅ GOOD: No leading wildcard
+SELECT * FROM products WHERE name LIKE 'phone%';
+```
+
+**Complex Example:**
+```sql
+-- ❌ SLOW: Multiple inefficient conditions
+SELECT * FROM orders
+WHERE MONTH(order_date) = 12
+    AND YEAR(order_date) = 2024
+    AND UPPER(status) = 'COMPLETED'
+    AND customer_id IN (SELECT id FROM customers WHERE region = 'Asia');
+
+-- ✅ FAST: Optimized version
+SELECT o.* FROM orders o
+INNER JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_date >= '2024-12-01' 
+    AND o.order_date < '2025-01-01'
+    AND o.status = 'COMPLETED'  -- Assuming status is already uppercase in DB
+    AND c.region = 'Asia';
+
+-- Add indexes:
+CREATE INDEX idx_orders_date_status ON orders(order_date, status);
+CREATE INDEX idx_customers_region ON customers(region);
+```
+
+---
+
+### 🔍 Query Performance Monitoring
+
+**Easy Example 1: Slow query log**
+```sql
+-- Enable slow query log
+SET GLOBAL slow_query_log = 1;
+SET GLOBAL long_query_time = 2;  -- Queries taking > 2 seconds
+
+-- Check slow queries
+SELECT * FROM mysql.slow_log
+ORDER BY start_time DESC
+LIMIT 10;
+```
+
+**Easy Example 2: Query profiling**
+```sql
+-- Enable profiling
+SET profiling = 1;
+
+-- Run your query
+SELECT * FROM orders WHERE customer_id = 123;
+
+-- View profile
+SHOW PROFILES;
+
+-- Detailed profile
+SHOW PROFILE FOR QUERY 1;
+```
+
+**Complex Example: Performance monitoring dashboard**
+```sql
+-- Get query statistics
+SELECT 
+    DIGEST_TEXT AS query_pattern,
+    COUNT_STAR AS exec_count,
+    ROUND(AVG_TIMER_WAIT / 1000000000, 3) AS avg_time_ms,
+    ROUND(MAX_TIMER_WAIT / 1000000000, 3) AS max_time_ms,
+    ROUND(SUM_TIMER_WAIT / 1000000000, 3) AS total_time_ms,
+    ROUND(SUM_ROWS_EXAMINED / COUNT_STAR, 0) AS avg_rows_examined,
+    ROUND(SUM_ROWS_SENT / COUNT_STAR, 0) AS avg_rows_returned
+FROM performance_schema.events_statements_summary_by_digest
+WHERE DIGEST_TEXT IS NOT NULL
+ORDER BY total_time_ms DESC
+LIMIT 20;
+
+-- Index usage statistics
+SELECT 
+    object_schema AS database_name,
+    object_name AS table_name,
+    index_name,
+    count_star AS times_used,
+    ROUND(sum_timer_wait / 1000000000, 2) AS total_time_ms
+FROM performance_schema.table_io_waits_summary_by_index_usage
+WHERE index_name IS NOT NULL
+    AND object_schema = 'your_database'
+ORDER BY count_star DESC;
+
+-- Table scan statistics (tables accessed without indexes)
+SELECT 
+    object_schema,
+    object_name,
+    count_read AS full_scans,
+    ROUND(sum_timer_wait / 1000000000, 2) AS total_wait_ms
+FROM performance_schema.table_io_waits_summary_by_table
+WHERE object_schema NOT IN ('mysql', 'performance_schema', 'information_schema')
+    AND count_read > 0
+ORDER BY count_read DESC
+LIMIT 20;
+```
+
+---
+
+### 📈 Advanced Optimization Techniques
+
+**1. Partitioning**
+
+**Easy Example:**
+```sql
+-- Partition large table by date range
+CREATE TABLE orders_partitioned (
+    order_id INT,
+    customer_id INT,
+    order_date DATE,
+    order_total DECIMAL(10,2)
+) PARTITION BY RANGE (YEAR(order_date)) (
+    PARTITION p2022 VALUES LESS THAN (2023),
+    PARTITION p2023 VALUES LESS THAN (2024),
+    PARTITION p2024 VALUES LESS THAN (2025),
+    PARTITION p_future VALUES LESS THAN MAXVALUE
+);
+
+-- Query specific partition (much faster)
+SELECT * FROM orders_partitioned
+WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01';
+-- MySQL automatically queries only p2024 partition
+```
+
+**2. Query Cache (MySQL 5.7 and older)**
 
 ```sql
-EXPLAIN SELECT * FROM employees WHERE department = 'IT';
+-- Check cache status
+SHOW VARIABLES LIKE 'query_cache%';
+
+-- Enable query cache
+SET GLOBAL query_cache_size = 67108864;  -- 64MB
+SET GLOBAL query_cache_type = ON;
 ```
+
+**3. Batch Operations**
+
+**Easy Example:**
+```sql
+-- ❌ SLOW: Individual inserts (1000 queries)
+INSERT INTO logs (message, timestamp) VALUES ('Log 1', NOW());
+INSERT INTO logs (message, timestamp) VALUES ('Log 2', NOW());
+-- ... 998 more
+
+-- ✅ FAST: Batch insert (1 query)
+INSERT INTO logs (message, timestamp) VALUES
+('Log 1', NOW()),
+('Log 2', NOW()),
+('Log 3', NOW());
+-- ... up to 1000 rows
+
+-- Even better: Use LOAD DATA INFILE for bulk operations
+LOAD DATA LOCAL INFILE '/path/to/data.csv'
+INTO TABLE logs
+FIELDS TERMINATED BY ','
+LINES TERMINATED BY '\n'
+(message, timestamp);
+```
+
+---
 
 ### Query Execution Order
 
-1. **FROM** - টেবিল নির্বাচন
-2. **WHERE** - শর্ত অনুযায়ী ফিল্টার
-3. **GROUP BY** - গ্রুপ করা
-4. **HAVING** - গ্রুপের উপর শর্ত
-5. **SELECT** - কলাম নির্বাচন
-6. **ORDER BY** - সাজানো
-7. **LIMIT** - সীমিত করা
+Understanding this helps optimize queries:
+
+1. **FROM** - টেবিল এবং JOINs নির্বাচন
+2. **WHERE** - Row filtering (indexes used here)
+3. **GROUP BY** - Rows গ্রুপ করা
+4. **HAVING** - Group filtering
+5. **SELECT** - Columns নির্বাচন এবং calculations
+6. **DISTINCT** - Duplicate removal
+7. **ORDER BY** - Results সাজানো
+8. **LIMIT / OFFSET** - Results সীমিত করা
+
+**Optimization based on order:**
+- Filters (WHERE) execute before aggregations - put filters here, not in HAVING
+- GROUP BY before SELECT - can't use column aliases in GROUP BY
+- ORDER BY is expensive - avoid on large datasets or add index
+- LIMIT reduces final output - use early when possible
+
+---
+
+## 📋 Common Table Expressions (CTEs)
+
+**CTE (Common Table Expression)** হলো temporary result set যা একটি query-র মধ্যে define করা হয় এবং শুধুমাত্র সেই query-র scope-এ available থাকে। এটি query-কে আরো readable এবং maintainable করে তোলে।
+
+### 📖 CTE Syntax
+
+```sql
+WITH cte_name AS (
+    SELECT ...
+)
+SELECT * FROM cte_name;
+
+-- Multiple CTEs
+WITH 
+cte1 AS (SELECT ...),
+cte2 AS (SELECT ...),
+cte3 AS (SELECT ...)
+SELECT * FROM cte1 JOIN cte2 ON ... JOIN cte3 ON ...;
+```
+
+**Benefits of CTEs:**
+- ✅ Code reusability - একই CTE একাধিকবার reference করা যায়
+- ✅ Improved readability - Complex queries-কে smaller, manageable parts-এ ভাগ করা যায়
+- ✅ Recursive queries - Hierarchical data traverse করা যায়
+- ✅ Better performance - Subquery-র চেয়ে efficient হতে পারে
+
+---
+
+### 1️⃣ Simple CTE
+
+**Easy Example 1: Basic filtering**
+```sql
+WITH high_salary_employees AS (
+    SELECT id, name, department, salary
+    FROM employees
+    WHERE salary > 60000
+)
+SELECT 
+    department,
+    COUNT(*) AS employee_count,
+    ROUND(AVG(salary), 2) AS avg_salary
+FROM high_salary_employees
+GROUP BY department;
+```
+
+**Easy Example 2: Date-based filtering**
+```sql
+WITH recent_orders AS (
+    SELECT *
+    FROM orders
+    WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+)
+SELECT 
+    customer_id,
+    COUNT(*) AS order_count,
+    SUM(order_total) AS total_spent
+FROM recent_orders
+GROUP BY customer_id
+ORDER BY total_spent DESC
+LIMIT 10;
+```
+
+**Complex Example: Multi-step calculation**
+```sql
+-- Calculate employee performance score based on multiple factors
+WITH 
+-- Step 1: Get sales performance
+sales_performance AS (
+    SELECT 
+        e.id AS employee_id,
+        e.name,
+        e.department,
+        COALESCE(SUM(s.sale_amount), 0) AS total_sales,
+        COALESCE(COUNT(s.sale_id), 0) AS sale_count
+    FROM employees e
+    LEFT JOIN sales s ON e.id = s.employee_id 
+        AND s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+    GROUP BY e.id, e.name, e.department
+),
+-- Step 2: Get attendance record
+attendance_record AS (
+    SELECT 
+        employee_id,
+        COUNT(CASE WHEN status = 'Present' THEN 1 END) AS days_present,
+        COUNT(CASE WHEN status = 'Late' THEN 1 END) AS days_late,
+        COUNT(*) AS total_working_days
+    FROM attendance
+    WHERE attendance_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+    GROUP BY employee_id
+),
+-- Step 3: Get customer ratings
+customer_ratings AS (
+    SELECT 
+        employee_id,
+        AVG(rating) AS avg_customer_rating,
+        COUNT(*) AS total_ratings
+    FROM customer_feedback
+    WHERE feedback_date >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+    GROUP BY employee_id
+),
+-- Step 4: Calculate performance score
+performance_scores AS (
+    SELECT 
+        sp.employee_id,
+        sp.name,
+        sp.department,
+        sp.total_sales,
+        sp.sale_count,
+        COALESCE(ar.days_present, 0) AS days_present,
+        COALESCE(ar.total_working_days, 0) AS total_days,
+        COALESCE(cr.avg_customer_rating, 0) AS avg_rating,
+        -- Performance calculation
+        (
+            -- Sales score (40%)
+            (CASE 
+                WHEN sp.total_sales >= 100000 THEN 40
+                WHEN sp.total_sales >= 50000 THEN 30
+                WHEN sp.total_sales >= 25000 THEN 20
+                ELSE 10
+            END) +
+            -- Attendance score (30%)
+            (CASE 
+                WHEN COALESCE(ar.days_present / NULLIF(ar.total_working_days, 0), 0) >= 0.95 THEN 30
+                WHEN COALESCE(ar.days_present / NULLIF(ar.total_working_days, 0), 0) >= 0.85 THEN 20
+                WHEN COALESCE(ar.days_present / NULLIF(ar.total_working_days, 0), 0) >= 0.75 THEN 10
+                ELSE 0
+            END) +
+            -- Customer rating score (30%)
+            (COALESCE(cr.avg_customer_rating, 0) * 6)
+        ) AS performance_score
+    FROM sales_performance sp
+    LEFT JOIN attendance_record ar ON sp.employee_id = ar.employee_id
+    LEFT JOIN customer_ratings cr ON sp.employee_id = cr.employee_id
+)
+SELECT 
+    name,
+    department,
+    total_sales,
+    sale_count,
+    days_present,
+    total_days,
+    ROUND(avg_rating, 2) AS customer_rating,
+    ROUND(performance_score, 2) AS final_score,
+    CASE 
+        WHEN performance_score >= 80 THEN 'Excellent'
+        WHEN performance_score >= 60 THEN 'Good'
+        WHEN performance_score >= 40 THEN 'Average'
+        ELSE 'Needs Improvement'
+    END AS performance_grade,
+    RANK() OVER (PARTITION BY department ORDER BY performance_score DESC) AS dept_rank
+FROM performance_scores
+ORDER BY performance_score DESC;
+```
+
+---
+
+### 2️⃣ Multiple CTEs
+
+**Easy Example 1: Sequential calculations**
+```sql
+WITH 
+monthly_sales AS (
+    SELECT 
+        DATE_FORMAT(order_date, '%Y-%m') AS month,
+        SUM(order_total) AS total_sales
+    FROM orders
+    GROUP BY DATE_FORMAT(order_date, '%Y-%m')
+),
+sales_with_growth AS (
+    SELECT 
+        month,
+        total_sales,
+        LAG(total_sales) OVER (ORDER BY month) AS prev_month_sales,
+        ROUND(
+            ((total_sales - LAG(total_sales) OVER (ORDER BY month)) / 
+            LAG(total_sales) OVER (ORDER BY month)) * 100,
+            2
+        ) AS growth_percent
+    FROM monthly_sales
+)
+SELECT * FROM sales_with_growth WHERE growth_percent IS NOT NULL;
+```
+
+**Easy Example 2: Joining multiple CTEs**
+```sql
+WITH 
+customer_orders AS (
+    SELECT 
+        customer_id,
+        COUNT(*) AS order_count,
+        SUM(order_total) AS lifetime_value
+    FROM orders
+    GROUP BY customer_id
+),
+customer_reviews AS (
+    SELECT 
+        customer_id,
+        AVG(rating) AS avg_rating,
+        COUNT(*) AS review_count
+    FROM reviews
+    GROUP BY customer_id
+)
+SELECT 
+    c.customer_id,
+    c.name,
+    COALESCE(co.order_count, 0) AS orders,
+    COALESCE(co.lifetime_value, 0) AS total_spent,
+    COALESCE(cr.avg_rating, 0) AS rating,
+    COALESCE(cr.review_count, 0) AS reviews
+FROM customers c
+LEFT JOIN customer_orders co ON c.customer_id = co.customer_id
+LEFT JOIN customer_reviews cr ON c.customer_id = cr.customer_id;
+```
+
+**Complex Example: Data warehouse style reporting**
+```sql
+-- Comprehensive business intelligence report
+WITH 
+-- Dimension: Time periods
+time_periods AS (
+    SELECT DISTINCT
+        DATE_FORMAT(order_date, '%Y') AS year,
+        DATE_FORMAT(order_date, '%Y-%m') AS month,
+        QUARTER(order_date) AS quarter,
+        DATE_FORMAT(order_date, '%Y-Q%q') AS year_quarter
+    FROM orders
+),
+-- Fact: Product sales
+product_sales AS (
+    SELECT 
+        DATE_FORMAT(o.order_date, '%Y-%m') AS month,
+        p.category,
+        p.product_name,
+        COUNT(DISTINCT o.order_id) AS order_count,
+        SUM(oi.quantity) AS units_sold,
+        SUM(oi.quantity * oi.price) AS revenue,
+        SUM(oi.quantity * oi.price - oi.quantity * p.cost) AS profit
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    GROUP BY DATE_FORMAT(o.order_date, '%Y-%m'), p.category, p.product_name
+),
+-- Aggregate: Category performance
+category_summary AS (
+    SELECT 
+        month,
+        category,
+        SUM(units_sold) AS total_units,
+        SUM(revenue) AS total_revenue,
+        SUM(profit) AS total_profit,
+        ROUND(AVG(revenue / NULLIF(units_sold, 0)), 2) AS avg_selling_price,
+        ROUND((SUM(profit) / NULLIF(SUM(revenue), 0)) * 100, 2) AS profit_margin_pct
+    FROM product_sales
+    GROUP BY month, category
+),
+-- Ranking: Top products per category
+top_products AS (
+    SELECT 
+        month,
+        category,
+        product_name,
+        revenue,
+        ROW_NUMBER() OVER (PARTITION BY month, category ORDER BY revenue DESC) AS product_rank
+    FROM product_sales
+),
+-- Trend: Growth calculation
+category_growth AS (
+    SELECT 
+        month,
+        category,
+        total_revenue,
+        LAG(total_revenue) OVER (PARTITION BY category ORDER BY month) AS prev_month_revenue,
+        ROUND(
+            ((total_revenue - LAG(total_revenue) OVER (PARTITION BY category ORDER BY month)) /
+            NULLIF(LAG(total_revenue) OVER (PARTITION BY category ORDER BY month), 0)) * 100,
+            2
+        ) AS mom_growth_pct
+    FROM category_summary
+)
+-- Final report: Combine all metrics
+SELECT 
+    cs.month,
+    cs.category,
+    cs.total_units,
+    ROUND(cs.total_revenue, 2) AS revenue,
+    ROUND(cs.total_profit, 2) AS profit,
+    cs.profit_margin_pct,
+    COALESCE(cg.mom_growth_pct, 0) AS growth_pct,
+    tp.product_name AS top_product,
+    ROUND(tp.revenue, 2) AS top_product_revenue,
+    RANK() OVER (PARTITION BY cs.month ORDER BY cs.total_revenue DESC) AS category_rank,
+    CASE 
+        WHEN cg.mom_growth_pct > 10 THEN 'Strong Growth'
+        WHEN cg.mom_growth_pct > 0 THEN 'Growing'
+        WHEN cg.mom_growth_pct = 0 THEN 'Stable'
+        WHEN cg.mom_growth_pct > -10 THEN 'Declining'
+        ELSE 'Critical'
+    END AS trend_status
+FROM category_summary cs
+LEFT JOIN category_growth cg ON cs.month = cg.month AND cs.category = cg.category
+LEFT JOIN top_products tp ON cs.month = tp.month AND cs.category = tp.category AND tp.product_rank = 1
+ORDER BY cs.month DESC, cs.total_revenue DESC;
+```
+
+---
+
+### 3️⃣ Recursive CTEs
+
+**Recursive CTE** নিজেকে reference করে এবং hierarchical বা tree-structured data traverse করতে ব্যবহৃত হয়।
+
+**Syntax:**
+```sql
+WITH RECURSIVE cte_name AS (
+    -- Base case (anchor member)
+    SELECT ...
+    
+    UNION ALL
+    
+    -- Recursive case (recursive member)
+    SELECT ... FROM cte_name ...
+)
+SELECT * FROM cte_name;
+```
+
+**Easy Example 1: Number sequence**
+```sql
+-- Generate numbers from 1 to 10
+WITH RECURSIVE numbers AS (
+    SELECT 1 AS n
+    UNION ALL
+    SELECT n + 1 FROM numbers WHERE n < 10
+)
+SELECT * FROM numbers;
+```
+
+**Easy Example 2: Date sequence**
+```sql
+-- Generate all dates in current month
+WITH RECURSIVE date_series AS (
+    SELECT DATE_FORMAT(CURDATE(), '%Y-%m-01') AS date
+    UNION ALL
+    SELECT DATE_ADD(date, INTERVAL 1 DAY)
+    FROM date_series
+    WHERE date < LAST_DAY(CURDATE())
+)
+SELECT 
+    date,
+    DAYNAME(date) AS day_name,
+    CASE WHEN DAYOFWEEK(date) IN (1, 7) THEN 'Weekend' ELSE 'Weekday' END AS day_type
+FROM date_series;
+```
+
+**Complex Example: Employee hierarchy**
+```sql
+-- Complete organizational hierarchy with all levels
+WITH RECURSIVE org_hierarchy AS (
+    -- Base case: CEO/Top level (no manager)
+    SELECT 
+        id,
+        name,
+        manager_id,
+        department,
+        salary,
+        1 AS level,
+        CAST(name AS CHAR(500)) AS hierarchy_path,
+        CAST(id AS CHAR(500)) AS id_path
+    FROM employees
+    WHERE manager_id IS NULL
+    
+    UNION ALL
+    
+    -- Recursive case: Subordinates
+    SELECT 
+        e.id,
+        e.name,
+        e.manager_id,
+        e.department,
+        e.salary,
+        oh.level + 1,
+        CONCAT(oh.hierarchy_path, ' > ', e.name),
+        CONCAT(oh.id_path, ',', e.id)
+    FROM employees e
+    INNER JOIN org_hierarchy oh ON e.manager_id = oh.id
+    WHERE oh.level < 10  -- Prevent infinite loops
+)
+SELECT 
+    level,
+    REPEAT('  ', level - 1) AS indentation,
+    CONCAT(REPEAT('  ', level - 1), name) AS employee_hierarchy,
+    department,
+    salary,
+    hierarchy_path,
+    manager_id,
+    (SELECT name FROM employees WHERE id = org_hierarchy.manager_id) AS manager_name,
+    (SELECT COUNT(*) FROM employees WHERE manager_id = org_hierarchy.id) AS direct_reports
+FROM org_hierarchy
+ORDER BY id_path;
+
+-- Find all subordinates of a specific manager (including indirect)
+WITH RECURSIVE subordinates AS (
+    -- Base case: The manager
+    SELECT id, name, manager_id, 0 AS distance
+    FROM employees
+    WHERE id = 5  -- Manager ID
+    
+    UNION ALL
+    
+    -- Recursive case: Direct and indirect subordinates
+    SELECT e.id, e.name, e.manager_id, s.distance + 1
+    FROM employees e
+    INNER JOIN subordinates s ON e.manager_id = s.id
+)
+SELECT 
+    name,
+    distance,
+    CASE distance
+        WHEN 0 THEN 'Manager'
+        WHEN 1 THEN 'Direct Report'
+        ELSE CONCAT('Level ', distance, ' Subordinate')
+    END AS relationship
+FROM subordinates
+ORDER BY distance, name;
+```
+
+---
+
+### 4️⃣ CTEs with Aggregations
+
+**Easy Example 1: Department statistics**
+```sql
+WITH dept_stats AS (
+    SELECT 
+        department,
+        COUNT(*) AS emp_count,
+        AVG(salary) AS avg_salary,
+        MAX(salary) AS max_salary,
+        MIN(salary) AS min_salary
+    FROM employees
+    GROUP BY department
+)
+SELECT 
+    e.name,
+    e.department,
+    e.salary,
+    ds.avg_salary AS dept_avg,
+    ROUND(e.salary - ds.avg_salary, 2) AS diff_from_avg,
+    ROUND((e.salary / ds.avg_salary - 1) * 100, 2) AS pct_diff_from_avg
+FROM employees e
+JOIN dept_stats ds ON e.department = ds.department
+ORDER BY e.department, e.salary DESC;
+```
+
+**Easy Example 2: Running totals with CTE**
+```sql
+WITH daily_sales AS (
+    SELECT 
+        DATE(order_date) AS sale_date,
+        SUM(order_total) AS daily_total
+    FROM orders
+    GROUP BY DATE(order_date)
+)
+SELECT 
+    sale_date,
+    daily_total,
+    SUM(daily_total) OVER (ORDER BY sale_date) AS running_total,
+    AVG(daily_total) OVER (
+        ORDER BY sale_date 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS seven_day_avg
+FROM daily_sales
+ORDER BY sale_date;
+```
+
+**Complex Example: Cohort analysis**
+```sql
+-- Customer cohort retention analysis
+WITH 
+-- Step 1: Identify first purchase month for each customer
+customer_cohort AS (
+    SELECT 
+        customer_id,
+        DATE_FORMAT(MIN(order_date), '%Y-%m') AS cohort_month
+    FROM orders
+    GROUP BY customer_id
+),
+-- Step 2: All orders with cohort information
+orders_with_cohort AS (
+    SELECT 
+        o.customer_id,
+        cc.cohort_month,
+        DATE_FORMAT(o.order_date, '%Y-%m') AS order_month,
+        TIMESTAMPDIFF(MONTH, 
+            STR_TO_DATE(CONCAT(cc.cohort_month, '-01'), '%Y-%m-%d'),
+            STR_TO_DATE(CONCAT(DATE_FORMAT(o.order_date, '%Y-%m'), '-01'), '%Y-%m-%d')
+        ) AS months_since_first_purchase
+    FROM orders o
+    JOIN customer_cohort cc ON o.customer_id = cc.customer_id
+),
+-- Step 3: Count unique customers in each cohort/month combination
+cohort_counts AS (
+    SELECT 
+        cohort_month,
+        months_since_first_purchase,
+        COUNT(DISTINCT customer_id) AS customer_count
+    FROM orders_with_cohort
+    GROUP BY cohort_month, months_since_first_purchase
+),
+-- Step 4: Get cohort sizes (month 0)
+cohort_sizes AS (
+    SELECT 
+        cohort_month,
+        customer_count AS cohort_size
+    FROM cohort_counts
+    WHERE months_since_first_purchase = 0
+)
+-- Step 5: Calculate retention percentages
+SELECT 
+    cc.cohort_month,
+    cs.cohort_size,
+    cc.months_since_first_purchase AS month_number,
+    cc.customer_count AS retained_customers,
+    ROUND((cc.customer_count * 100.0 / cs.cohort_size), 2) AS retention_pct,
+    CASE 
+        WHEN cc.months_since_first_purchase = 0 THEN 'New Customers'
+        WHEN cc.months_since_first_purchase = 1 THEN 'Month 1'
+        WHEN cc.months_since_first_purchase <= 3 THEN 'Quarter 1'
+        WHEN cc.months_since_first_purchase <= 6 THEN 'Quarter 2'
+        WHEN cc.months_since_first_purchase <= 12 THEN 'Year 1'
+        ELSE 'Long-term'
+    END AS retention_period
+FROM cohort_counts cc
+JOIN cohort_sizes cs ON cc.cohort_month = cs.cohort_month
+WHERE cc.months_since_first_purchase <= 12  -- First year retention
+ORDER BY cc.cohort_month, cc.months_since_first_purchase;
+```
+
+---
+
+### 5️⃣ CTEs for Data Transformation
+
+**Easy Example 1: Pivoting data**
+```sql
+-- Transform rows to columns
+WITH monthly_data AS (
+    SELECT 
+        product_name,
+        DATE_FORMAT(order_date, '%Y-%m') AS month,
+        SUM(quantity * price) AS revenue
+    FROM orders o
+    JOIN order_items oi ON o.order_id = oi.order_id
+    JOIN products p ON oi.product_id = p.product_id
+    WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)
+    GROUP BY product_name, DATE_FORMAT(order_date, '%Y-%m')
+)
+SELECT 
+    product_name,
+    SUM(CASE WHEN month = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 2 MONTH), '%Y-%m') 
+        THEN revenue ELSE 0 END) AS month_1,
+    SUM(CASE WHEN month = DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m') 
+        THEN revenue ELSE 0 END) AS month_2,
+    SUM(CASE WHEN month = DATE_FORMAT(CURDATE(), '%Y-%m') 
+        THEN revenue ELSE 0 END) AS month_3,
+    SUM(revenue) AS total
+FROM monthly_data
+GROUP BY product_name
+ORDER BY total DESC;
+```
+
+**Easy Example 2: Data cleansing**
+```sql
+WITH cleaned_data AS (
+    SELECT 
+        id,
+        TRIM(UPPER(name)) AS name,
+        REPLACE(REPLACE(phone, '-', ''), ' ', '') AS phone,
+        LOWER(TRIM(email)) AS email,
+        CASE 
+            WHEN status IS NULL OR status = '' THEN 'Unknown'
+            ELSE status
+        END AS status
+    FROM customers
+)
+SELECT * FROM cleaned_data WHERE email LIKE '%@%.%';
+```
+
+**Complex Example: Advanced data transformation pipeline**
+```sql
+-- Multi-stage data transformation for analytics
+WITH 
+-- Stage 1: Raw data extraction
+raw_transactions AS (
+    SELECT 
+        t.transaction_id,
+        t.customer_id,
+        c.customer_name,
+        c.customer_segment,
+        t.transaction_date,
+        t.amount,
+        t.transaction_type,
+        t.payment_method,
+        t.status
+    FROM transactions t
+    JOIN customers c ON t.customer_id = c.customer_id
+    WHERE t.transaction_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+),
+-- Stage 2: Data validation and cleansing
+validated_transactions AS (
+    SELECT 
+        transaction_id,
+        customer_id,
+        COALESCE(customer_name, 'Unknown') AS customer_name,
+        COALESCE(customer_segment, 'Unclassified') AS customer_segment,
+        transaction_date,
+        CASE 
+            WHEN amount < 0 THEN 0
+            WHEN amount > 1000000 THEN 1000000  -- Cap extreme values
+            ELSE amount
+        END AS amount,
+        transaction_type,
+        payment_method,
+        status
+    FROM raw_transactions
+    WHERE status = 'Completed'  -- Only completed transactions
+        AND amount IS NOT NULL
+),
+-- Stage 3: Enrichment with calculated fields
+enriched_transactions AS (
+    SELECT 
+        *,
+        DATE_FORMAT(transaction_date, '%Y-%m') AS month,
+        QUARTER(transaction_date) AS quarter,
+        DAYNAME(transaction_date) AS day_of_week,
+        CASE 
+            WHEN amount < 100 THEN 'Small'
+            WHEN amount < 1000 THEN 'Medium'
+            WHEN amount < 10000 THEN 'Large'
+            ELSE 'Extra Large'
+        END AS transaction_size,
+        CASE 
+            WHEN HOUR(transaction_date) BETWEEN 6 AND 11 THEN 'Morning'
+            WHEN HOUR(transaction_date) BETWEEN 12 AND 17 THEN 'Afternoon'
+            WHEN HOUR(transaction_date) BETWEEN 18 AND 22 THEN 'Evening'
+            ELSE 'Night'
+        END AS time_of_day
+    FROM validated_transactions
+),
+-- Stage 4: Aggregation
+customer_metrics AS (
+    SELECT 
+        customer_id,
+        customer_name,
+        customer_segment,
+        COUNT(*) AS transaction_count,
+        SUM(amount) AS total_amount,
+        AVG(amount) AS avg_transaction,
+        MAX(amount) AS max_transaction,
+        MIN(transaction_date) AS first_transaction,
+        MAX(transaction_date) AS last_transaction,
+        DATEDIFF(MAX(transaction_date), MIN(transaction_date)) AS customer_lifetime_days,
+        COUNT(DISTINCT month) AS active_months
+    FROM enriched_transactions
+    GROUP BY customer_id, customer_name, customer_segment
+),
+-- Stage 5: Scoring and classification
+customer_scores AS (
+    SELECT 
+        *,
+        CASE 
+            WHEN total_amount >= 50000 AND transaction_count >= 20 THEN 'VIP'
+            WHEN total_amount >= 20000 OR transaction_count >= 10 THEN 'Premium'
+            WHEN total_amount >= 5000 OR transaction_count >= 5 THEN 'Standard'
+            ELSE 'Basic'
+        END AS customer_tier,
+        NTILE(10) OVER (ORDER BY total_amount DESC) AS value_decile,
+        NTILE(4) OVER (ORDER BY transaction_count DESC) AS frequency_quartile
+    FROM customer_metrics
+)
+-- Stage 6: Final output with recommendations
+SELECT 
+    customer_name,
+    customer_segment,
+    customer_tier,
+    transaction_count,
+    ROUND(total_amount, 2) AS lifetime_value,
+    ROUND(avg_transaction, 2) AS avg_order_value,
+    active_months,
+    DATEDIFF(CURDATE(), last_transaction) AS days_since_last_purchase,
+    CASE 
+        WHEN DATEDIFF(CURDATE(), last_transaction) > 90 THEN 'At Risk'
+        WHEN DATEDIFF(CURDATE(), last_transaction) > 60 THEN 'Needs Attention'
+        ELSE 'Active'
+    END AS engagement_status,
+    CASE 
+        WHEN customer_tier = 'VIP' AND DATEDIFF(CURDATE(), last_transaction) <= 30 
+            THEN 'Maintain with exclusive offers'
+        WHEN customer_tier IN ('VIP', 'Premium') AND DATEDIFF(CURDATE(), last_transaction) > 60 
+            THEN 'Re-engage with personalized campaign'
+        WHEN customer_tier = 'Standard' AND value_decile <= 5 
+            THEN 'Upsell opportunity'
+        WHEN DATEDIFF(CURDATE(), last_transaction) > 90 
+            THEN 'Win-back campaign'
+        ELSE 'Regular communication'
+    END AS recommended_action
+FROM customer_scores
+ORDER BY lifetime_value DESC;
+```
+
+---
+
+### 🎯 CTE Best Practices
+
+1. **Use descriptive names** - CTE-র নাম meaningful হওয়া উচিত
+2. **Break complex logic** - বড় queries-কে ছোট CTEs-এ ভাগ করুন
+3. **Reuse CTEs** - একই CTE multiple times reference করা যায়
+4. **Add comments** - প্রতিটি CTE-র purpose explain করুন
+5. **Limit recursion depth** - Recursive CTEs-এ termination condition দিন
+6. **Consider materialization** - Complex CTEs repeatedly used হলে temp table বিবেচনা করুন
+
+---
+
+## 🪟 Window Functions (Advanced SQL)
+
+**Window Functions** হলো বিশেষ ধরনের function যা একটি "window" বা row-এর একটি set-এর উপর calculation করে। Normal aggregate functions-এর মতো rows group করে না, বরং প্রতিটি row-এর জন্য আলাদাভাবে result দেয়।
+
+### 📖 Window Function Syntax
+
+```sql
+window_function(expression) OVER (
+    [PARTITION BY partition_expression]
+    [ORDER BY sort_expression [ASC | DESC]]
+    [ROWS/RANGE frame_clause]
+)
+```
+
+**Components:**
+- `PARTITION BY`: Data কে groups-এ ভাগ করে (optional)
+- `ORDER BY`: Window-এর মধ্যে rows-এর order নির্ধারণ করে (optional)
+- `ROWS/RANGE`: Window frame নির্ধারণ করে (optional)
+
+---
+
+### 1️⃣ ROW_NUMBER() - Row Numbering
+
+প্রতিটি row-কে একটি unique sequential number assign করে।
+
+**Easy Example 1: Simple row numbering**
+```sql
+SELECT 
+    name,
+    department,
+    salary,
+    ROW_NUMBER() OVER (ORDER BY salary DESC) AS row_num
+FROM employees;
+```
+
+**Easy Example 2: Row number within each department**
+```sql
+SELECT 
+    name,
+    department,
+    salary,
+    ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS dept_rank
+FROM employees;
+```
+
+**Complex Example: Find top 2 earners per department**
+```sql
+WITH ranked_employees AS (
+    SELECT 
+        id,
+        name,
+        department,
+        salary,
+        join_date,
+        ROW_NUMBER() OVER (
+            PARTITION BY department 
+            ORDER BY salary DESC, join_date ASC
+        ) AS salary_rank
+    FROM employees
+)
+SELECT 
+    department,
+    name,
+    salary,
+    join_date,
+    salary_rank
+FROM ranked_employees
+WHERE salary_rank <= 2
+ORDER BY department, salary_rank;
+
+-- Use Case: পেজিনেশন (pagination)
+WITH numbered_products AS (
+    SELECT 
+        product_id,
+        product_name,
+        price,
+        ROW_NUMBER() OVER (ORDER BY product_name) AS row_num
+    FROM products
+)
+SELECT product_id, product_name, price
+FROM numbered_products
+WHERE row_num BETWEEN 21 AND 30;  -- Page 3, 10 items per page
+```
+
+---
+
+### 2️⃣ RANK() - Ranking with Gaps
+
+Rows-কে rank করে, same value থাকলে same rank দেয় এবং পরবর্তী rank skip করে।
+
+**Easy Example 1: Overall ranking**
+```sql
+SELECT 
+    name,
+    score,
+    RANK() OVER (ORDER BY score DESC) AS rank_position
+FROM students;
+-- Score: 95, 90, 90, 85 → Rank: 1, 2, 2, 4 (3 is skipped)
+```
+
+**Easy Example 2: Ranking by category**
+```sql
+SELECT 
+    product_name,
+    category,
+    price,
+    RANK() OVER (PARTITION BY category ORDER BY price DESC) AS price_rank
+FROM products;
+```
+
+**Complex Example: Compare multiple ranking methods**
+```sql
+SELECT 
+    name,
+    department,
+    salary,
+    RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS rank_with_gaps,
+    DENSE_RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS rank_no_gaps,
+    ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS row_num,
+    PERCENT_RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS percentile_rank,
+    CASE 
+        WHEN RANK() OVER (PARTITION BY department ORDER BY salary DESC) = 1 
+        THEN 'Top Performer'
+        WHEN RANK() OVER (PARTITION BY department ORDER BY salary DESC) <= 3 
+        THEN 'High Performer'
+        ELSE 'Regular'
+    END AS performance_category
+FROM employees
+ORDER BY department, salary DESC;
+
+-- Real scenario: Employee performance with salary percentile
+WITH salary_stats AS (
+    SELECT 
+        e.*,
+        RANK() OVER (ORDER BY salary DESC) AS overall_rank,
+        PERCENT_RANK() OVER (ORDER BY salary) AS salary_percentile,
+        AVG(salary) OVER (PARTITION BY department) AS dept_avg_salary
+    FROM employees e
+)
+SELECT 
+    name,
+    department,
+    salary,
+    overall_rank,
+    ROUND(salary_percentile * 100, 2) AS percentile,
+    ROUND(dept_avg_salary, 2) AS dept_avg,
+    ROUND(((salary - dept_avg_salary) / dept_avg_salary) * 100, 2) AS variance_from_avg
+FROM salary_stats
+WHERE overall_rank <= 10;
+```
+
+---
+
+### 3️⃣ DENSE_RANK() - Ranking without Gaps
+
+RANK()-এর মতো কিন্তু gaps skip করে না।
+
+**Easy Example 1: Dense ranking**
+```sql
+SELECT 
+    name,
+    score,
+    DENSE_RANK() OVER (ORDER BY score DESC) AS dense_rank
+FROM students;
+-- Score: 95, 90, 90, 85 → Rank: 1, 2, 2, 3 (no skip)
+```
+
+**Easy Example 2: Product ranking**
+```sql
+SELECT 
+    product_name,
+    sales_count,
+    DENSE_RANK() OVER (ORDER BY sales_count DESC) AS popularity_rank
+FROM product_sales;
+```
+
+**Complex Example: Multi-level ranking**
+```sql
+-- Find products that rank in top 3 in multiple metrics
+WITH product_rankings AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        p.category,
+        COUNT(o.order_id) AS order_count,
+        SUM(o.quantity) AS total_quantity,
+        SUM(o.quantity * o.price) AS revenue,
+        DENSE_RANK() OVER (PARTITION BY p.category ORDER BY COUNT(o.order_id) DESC) AS order_rank,
+        DENSE_RANK() OVER (PARTITION BY p.category ORDER BY SUM(o.quantity) DESC) AS quantity_rank,
+        DENSE_RANK() OVER (PARTITION BY p.category ORDER BY SUM(o.quantity * o.price) DESC) AS revenue_rank
+    FROM products p
+    LEFT JOIN orders o ON p.product_id = o.product_id
+    GROUP BY p.product_id, p.product_name, p.category
+)
+SELECT 
+    category,
+    product_name,
+    order_count,
+    total_quantity,
+    ROUND(revenue, 2) AS revenue,
+    order_rank,
+    quantity_rank,
+    revenue_rank,
+    CASE 
+        WHEN order_rank <= 3 AND quantity_rank <= 3 AND revenue_rank <= 3 
+        THEN 'Star Product'
+        WHEN order_rank <= 3 OR quantity_rank <= 3 OR revenue_rank <= 3 
+        THEN 'Top Performer'
+        ELSE 'Regular'
+    END AS product_category
+FROM product_rankings
+WHERE order_rank <= 5 OR quantity_rank <= 5 OR revenue_rank <= 5
+ORDER BY category, revenue DESC;
+```
+
+---
+
+### 4️⃣ NTILE(n) - Divide into Buckets
+
+Data-কে n সংখ্যক equal buckets/groups-এ ভাগ করে।
+
+**Easy Example 1: Quartiles (4 groups)**
+```sql
+SELECT 
+    name,
+    salary,
+    NTILE(4) OVER (ORDER BY salary) AS salary_quartile
+FROM employees;
+-- 1=bottom 25%, 2=25-50%, 3=50-75%, 4=top 25%
+```
+
+**Easy Example 2: Divide students into 3 performance groups**
+```sql
+SELECT 
+    name,
+    total_marks,
+    NTILE(3) OVER (ORDER BY total_marks DESC) AS performance_group,
+    CASE NTILE(3) OVER (ORDER BY total_marks DESC)
+        WHEN 1 THEN 'High'
+        WHEN 2 THEN 'Medium'
+        WHEN 3 THEN 'Low'
+    END AS performance_label
+FROM students;
+```
+
+**Complex Example: Portfolio analysis with deciles**
+```sql
+-- Categorize customers into 10 segments based on lifetime value
+WITH customer_analysis AS (
+    SELECT 
+        c.customer_id,
+        c.customer_name,
+        c.join_date,
+        COUNT(DISTINCT o.order_id) AS total_orders,
+        SUM(o.order_total) AS lifetime_value,
+        AVG(o.order_total) AS avg_order_value,
+        DATEDIFF(CURDATE(), MAX(o.order_date)) AS days_since_last_order,
+        NTILE(10) OVER (ORDER BY SUM(o.order_total) DESC) AS value_decile,
+        NTILE(4) OVER (ORDER BY COUNT(DISTINCT o.order_id) DESC) AS frequency_quartile
+    FROM customers c
+    LEFT JOIN orders o ON c.customer_id = o.customer_id
+    GROUP BY c.customer_id, c.customer_name, c.join_date
+)
+SELECT 
+    value_decile,
+    COUNT(*) AS customer_count,
+    ROUND(AVG(lifetime_value), 2) AS avg_lifetime_value,
+    ROUND(MIN(lifetime_value), 2) AS min_value,
+    ROUND(MAX(lifetime_value), 2) AS max_value,
+    ROUND(AVG(total_orders), 1) AS avg_orders,
+    CASE 
+        WHEN value_decile = 1 THEN 'VIP - Top 10%'
+        WHEN value_decile <= 3 THEN 'High Value'
+        WHEN value_decile <= 7 THEN 'Medium Value'
+        ELSE 'Low Value'
+    END AS segment_label,
+    CASE 
+        WHEN value_decile = 1 THEN 'Personal account manager, exclusive offers'
+        WHEN value_decile <= 3 THEN 'Premium rewards, early access'
+        WHEN value_decile <= 7 THEN 'Standard rewards program'
+        ELSE 'Re-engagement campaigns'
+    END AS recommended_action
+FROM customer_analysis
+GROUP BY value_decile
+ORDER BY value_decile;
+```
+
+---
+
+### 5️⃣ LAG() - Access Previous Row
+
+Current row-এর আগের row-এর value access করতে।
+
+**Easy Example 1: Previous month sales**
+```sql
+SELECT 
+    month,
+    revenue,
+    LAG(revenue) OVER (ORDER BY month) AS previous_month_revenue
+FROM monthly_sales;
+```
+
+**Easy Example 2: Price change**
+```sql
+SELECT 
+    product_id,
+    price_date,
+    price,
+    LAG(price) OVER (PARTITION BY product_id ORDER BY price_date) AS previous_price,
+    price - LAG(price) OVER (PARTITION BY product_id ORDER BY price_date) AS price_change
+FROM product_prices;
+```
+
+**Complex Example: Calculate growth trends**
+```sql
+-- Advanced sales analysis with multiple lags
+WITH sales_data AS (
+    SELECT 
+        DATE_FORMAT(order_date, '%Y-%m') AS month,
+        SUM(order_total) AS monthly_revenue,
+        COUNT(DISTINCT customer_id) AS customer_count,
+        COUNT(order_id) AS order_count
+    FROM orders
+    GROUP BY DATE_FORMAT(order_date, '%Y-%m')
+)
+SELECT 
+    month,
+    monthly_revenue,
+    customer_count,
+    order_count,
+    LAG(monthly_revenue, 1) OVER (ORDER BY month) AS prev_month_revenue,
+    LAG(monthly_revenue, 12) OVER (ORDER BY month) AS same_month_last_year,
+    ROUND(
+        ((monthly_revenue - LAG(monthly_revenue, 1) OVER (ORDER BY month)) / 
+        LAG(monthly_revenue, 1) OVER (ORDER BY month)) * 100, 
+        2
+    ) AS mom_growth_percent,
+    ROUND(
+        ((monthly_revenue - LAG(monthly_revenue, 12) OVER (ORDER BY month)) / 
+        LAG(monthly_revenue, 12) OVER (ORDER BY month)) * 100, 
+        2
+    ) AS yoy_growth_percent,
+    AVG(monthly_revenue) OVER (
+        ORDER BY month 
+        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+    ) AS three_month_avg,
+    CASE 
+        WHEN monthly_revenue > LAG(monthly_revenue, 1) OVER (ORDER BY month) THEN 'Growing'
+        WHEN monthly_revenue = LAG(monthly_revenue, 1) OVER (ORDER BY month) THEN 'Stable'
+        ELSE 'Declining'
+    END AS trend
+FROM sales_data
+ORDER BY month;
+```
+
+---
+
+### 6️⃣ LEAD() - Access Next Row
+
+Current row-এর পরের row-এর value access করতে।
+
+**Easy Example 1: Next day temperature**
+```sql
+SELECT 
+    date,
+    temperature,
+    LEAD(temperature) OVER (ORDER BY date) AS next_day_temp,
+    LEAD(temperature) OVER (ORDER BY date) - temperature AS temp_change
+FROM weather_data;
+```
+
+**Easy Example 2: Project timeline**
+```sql
+SELECT 
+    task_name,
+    start_date,
+    end_date,
+    LEAD(start_date) OVER (ORDER BY start_date) AS next_task_start,
+    DATEDIFF(
+        LEAD(start_date) OVER (ORDER BY start_date), 
+        end_date
+    ) AS gap_days
+FROM project_tasks;
+```
+
+**Complex Example: Customer journey analysis**
+```sql
+-- Analyze customer purchase patterns
+WITH customer_purchases AS (
+    SELECT 
+        customer_id,
+        order_id,
+        order_date,
+        order_total,
+        product_category
+    FROM orders
+    WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
+),
+purchase_flow AS (
+    SELECT 
+        customer_id,
+        order_date,
+        order_total,
+        product_category,
+        LEAD(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS next_purchase_date,
+        LEAD(product_category) OVER (PARTITION BY customer_id ORDER BY order_date) AS next_category,
+        LEAD(order_total) OVER (PARTITION BY customer_id ORDER BY order_date) AS next_order_total,
+        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date) AS purchase_number
+    FROM customer_purchases
+)
+SELECT 
+    customer_id,
+    product_category AS current_category,
+    next_category,
+    CONCAT(product_category, ' → ', COALESCE(next_category, 'No Next')) AS purchase_pattern,
+    COUNT(*) AS pattern_count,
+    ROUND(AVG(DATEDIFF(next_purchase_date, order_date)), 1) AS avg_days_between_purchases,
+    ROUND(AVG(order_total), 2) AS avg_current_order,
+    ROUND(AVG(next_order_total), 2) AS avg_next_order,
+    ROUND(AVG(next_order_total - order_total), 2) AS avg_order_growth
+FROM purchase_flow
+WHERE next_purchase_date IS NOT NULL
+GROUP BY customer_id, product_category, next_category
+HAVING pattern_count >= 2
+ORDER BY customer_id, pattern_count DESC;
+```
+
+---
+
+### 7️⃣ FIRST_VALUE() - First Value in Window
+
+Window-এর প্রথম value return করে।
+
+**Easy Example 1: Highest salary in department**
+```sql
+SELECT DISTINCT
+    department,
+    FIRST_VALUE(name) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+    ) AS highest_paid_employee,
+    FIRST_VALUE(salary) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+    ) AS highest_salary
+FROM employees;
+```
+
+**Easy Example 2: First order of each customer**
+```sql
+SELECT 
+    customer_id,
+    order_date,
+    order_total,
+    FIRST_VALUE(order_date) OVER (
+        PARTITION BY customer_id 
+        ORDER BY order_date
+    ) AS first_order_date
+FROM orders;
+```
+
+**Complex Example: Benchmark comparison**
+```sql
+-- Compare each product against category leader
+WITH product_metrics AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        p.category,
+        p.price AS current_price,
+        COUNT(o.order_id) AS total_orders,
+        SUM(o.quantity) AS total_quantity,
+        SUM(o.quantity * o.price) AS total_revenue,
+        AVG(r.rating) AS avg_rating
+    FROM products p
+    LEFT JOIN orders o ON p.product_id = o.product_id
+    LEFT JOIN reviews r ON p.product_id = r.product_id
+    GROUP BY p.product_id, p.product_name, p.category, p.price
+)
+SELECT 
+    category,
+    product_name,
+    current_price,
+    total_orders,
+    total_revenue,
+    ROUND(avg_rating, 2) AS rating,
+    FIRST_VALUE(product_name) OVER (
+        PARTITION BY category 
+        ORDER BY total_revenue DESC
+    ) AS category_leader,
+    FIRST_VALUE(total_revenue) OVER (
+        PARTITION BY category 
+        ORDER BY total_revenue DESC
+    ) AS leader_revenue,
+    ROUND(
+        (total_revenue / FIRST_VALUE(total_revenue) OVER (
+            PARTITION BY category 
+            ORDER BY total_revenue DESC
+        )) * 100, 
+        2
+    ) AS percent_of_leader,
+    CASE 
+        WHEN product_name = FIRST_VALUE(product_name) OVER (
+            PARTITION BY category ORDER BY total_revenue DESC
+        ) THEN 'Category Leader'
+        WHEN total_revenue >= FIRST_VALUE(total_revenue) OVER (
+            PARTITION BY category ORDER BY total_revenue DESC
+        ) * 0.7 THEN 'Strong Competitor'
+        WHEN total_revenue >= FIRST_VALUE(total_revenue) OVER (
+            PARTITION BY category ORDER BY total_revenue DESC
+        ) * 0.3 THEN 'Average Performer'
+        ELSE 'Needs Improvement'
+    END AS performance_tier
+FROM product_metrics
+ORDER BY category, total_revenue DESC;
+```
+
+---
+
+### 8️⃣ LAST_VALUE() - Last Value in Window
+
+Window-এর শেষ value return করে।
+
+**Easy Example 1: Latest salary in department**
+```sql
+SELECT DISTINCT
+    department,
+    LAST_VALUE(name) OVER (
+        PARTITION BY department 
+        ORDER BY join_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS latest_hire
+FROM employees;
+```
+
+**Easy Example 2: Latest status**
+```sql
+SELECT 
+    order_id,
+    status_date,
+    status,
+    LAST_VALUE(status) OVER (
+        PARTITION BY order_id 
+        ORDER BY status_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS current_status
+FROM order_status_history;
+```
+
+**Complex Example: Trend analysis with first and last**
+```sql
+-- Compare first day vs last day performance of each month
+WITH daily_metrics AS (
+    SELECT 
+        DATE_FORMAT(order_date, '%Y-%m') AS month,
+        DATE(order_date) AS day,
+        SUM(order_total) AS daily_revenue,
+        COUNT(order_id) AS daily_orders,
+        COUNT(DISTINCT customer_id) AS daily_customers
+    FROM orders
+    GROUP BY DATE_FORMAT(order_date, '%Y-%m'), DATE(order_date)
+)
+SELECT DISTINCT
+    month,
+    FIRST_VALUE(day) OVER (
+        PARTITION BY month ORDER BY day
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS first_day,
+    FIRST_VALUE(daily_revenue) OVER (
+        PARTITION BY month ORDER BY day
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS first_day_revenue,
+    LAST_VALUE(day) OVER (
+        PARTITION BY month ORDER BY day
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS last_day,
+    LAST_VALUE(daily_revenue) OVER (
+        PARTITION BY month ORDER BY day
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS last_day_revenue,
+    ROUND(AVG(daily_revenue) OVER (PARTITION BY month), 2) AS month_avg_daily_revenue,
+    SUM(daily_revenue) OVER (PARTITION BY month) AS month_total_revenue,
+    COUNT(day) OVER (PARTITION BY month) AS trading_days,
+    ROUND(
+        ((LAST_VALUE(daily_revenue) OVER (
+            PARTITION BY month ORDER BY day
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        ) - FIRST_VALUE(daily_revenue) OVER (
+            PARTITION BY month ORDER BY day
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        )) / FIRST_VALUE(daily_revenue) OVER (
+            PARTITION BY month ORDER BY day
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        )) * 100,
+        2
+    ) AS first_to_last_growth_percent
+FROM daily_metrics
+ORDER BY month;
+```
+
+---
+
+### 9️⃣ NTH_VALUE() - Nth Value in Window
+
+Window-এর n-তম value return করে।
+
+**Easy Example 1: Second highest salary**
+```sql
+SELECT DISTINCT
+    department,
+    NTH_VALUE(name, 2) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS second_highest_earner,
+    NTH_VALUE(salary, 2) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS second_highest_salary
+FROM employees;
+```
+
+**Easy Example 2: Third best-selling product**
+```sql
+SELECT DISTINCT
+    category,
+    NTH_VALUE(product_name, 3) OVER (
+        PARTITION BY category 
+        ORDER BY sales_count DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS third_best_seller
+FROM product_sales;
+```
+
+**Complex Example: Percentile analysis**
+```sql
+-- Get specific percentile values (25th, 50th, 75th)
+WITH ranked_salaries AS (
+    SELECT 
+        department,
+        name,
+        salary,
+        ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary) AS rn,
+        COUNT(*) OVER (PARTITION BY department) AS dept_count
+    FROM employees
+)
+SELECT DISTINCT
+    department,
+    dept_count AS employee_count,
+    NTH_VALUE(salary, CAST(dept_count * 0.25 AS UNSIGNED)) OVER (
+        PARTITION BY department 
+        ORDER BY salary
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS percentile_25,
+    NTH_VALUE(salary, CAST(dept_count * 0.50 AS UNSIGNED)) OVER (
+        PARTITION BY department 
+        ORDER BY salary
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS median_salary,
+    NTH_VALUE(salary, CAST(dept_count * 0.75 AS UNSIGNED)) OVER (
+        PARTITION BY department 
+        ORDER BY salary
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS percentile_75,
+    NTH_VALUE(salary, 1) OVER (
+        PARTITION BY department 
+        ORDER BY salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS max_salary,
+    NTH_VALUE(salary, 1) OVER (
+        PARTITION BY department 
+        ORDER BY salary
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS min_salary
+FROM ranked_salaries
+ORDER BY department;
+```
+
+---
+
+### 🔟 SUM/AVG/COUNT with OVER - Running Totals
+
+Aggregate functions-কে window functions হিসেবে ব্যবহার করা।
+
+**Easy Example 1: Running total**
+```sql
+SELECT 
+    order_date,
+    order_total,
+    SUM(order_total) OVER (ORDER BY order_date) AS running_total
+FROM orders;
+```
+
+**Easy Example 2: Moving average**
+```sql
+SELECT 
+    date,
+    temperature,
+    AVG(temperature) OVER (
+        ORDER BY date 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS seven_day_avg
+FROM weather;
+```
+
+**Complex Example: Financial dashboard**
+```sql
+-- Comprehensive financial analysis with multiple window calculations
+WITH daily_transactions AS (
+    SELECT 
+        DATE(transaction_date) AS trans_date,
+        transaction_type,
+        SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE 0 END) AS daily_income,
+        SUM(CASE WHEN transaction_type = 'Expense' THEN amount ELSE 0 END) AS daily_expense,
+        SUM(CASE WHEN transaction_type = 'Income' THEN amount ELSE -amount END) AS daily_net
+    FROM transactions
+    GROUP BY DATE(transaction_date), transaction_type
+)
+SELECT 
+    trans_date,
+    daily_income,
+    daily_expense,
+    daily_net,
+    -- Running totals
+    SUM(daily_income) OVER (ORDER BY trans_date) AS cumulative_income,
+    SUM(daily_expense) OVER (ORDER BY trans_date) AS cumulative_expense,
+    SUM(daily_net) OVER (ORDER BY trans_date) AS account_balance,
+    -- Moving averages (7-day)
+    ROUND(AVG(daily_income) OVER (
+        ORDER BY trans_date 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ), 2) AS income_7day_avg,
+    ROUND(AVG(daily_expense) OVER (
+        ORDER BY trans_date 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ), 2) AS expense_7day_avg,
+    -- Moving averages (30-day)
+    ROUND(AVG(daily_net) OVER (
+        ORDER BY trans_date 
+        ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
+    ), 2) AS net_30day_avg,
+    -- Count of transactions
+    COUNT(*) OVER (
+        ORDER BY trans_date 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS transactions_last_7days,
+    -- Percentage of total
+    ROUND(
+        (daily_income / SUM(daily_income) OVER ()) * 100,
+        2
+    ) AS pct_of_total_income,
+    -- Comparison with average
+    ROUND(
+        ((daily_net - AVG(daily_net) OVER ()) / AVG(daily_net) OVER ()) * 100,
+        2
+    ) AS variance_from_avg_pct
+FROM daily_transactions
+ORDER BY trans_date;
+```
+
+---
+
+### 🎯 Window Function Frame Clauses
+
+Window frame নির্ধারণ করে কোন rows-এ calculation করা হবে।
+
+```sql
+-- ROWS: Physical rows
+ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING
+
+-- RANGE: Logical range based on values
+RANGE BETWEEN INTERVAL 1 DAY PRECEDING AND INTERVAL 1 DAY FOLLOWING
+```
+
+**Example: Different frame types**
+```sql
+SELECT 
+    order_date,
+    order_total,
+    -- Default: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    SUM(order_total) OVER (ORDER BY order_date) AS cumulative_sum,
+    -- Last 3 days including today
+    SUM(order_total) OVER (
+        ORDER BY order_date 
+        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+    ) AS last_3_days_sum,
+    -- Last 3 rows + current + next 3 rows (7 total)
+    AVG(order_total) OVER (
+        ORDER BY order_date 
+        ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING
+    ) AS centered_7day_avg,
+    -- All rows in partition
+    AVG(order_total) OVER (
+        ORDER BY order_date 
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS overall_avg
+FROM orders;
+```
+
+---
+
+### 🎯 Real-World Window Function Examples
+
+**Example 1: E-commerce Product Performance**
+```sql
+WITH product_performance AS (
+    SELECT 
+        p.product_id,
+        p.product_name,
+        p.category,
+        COUNT(o.order_id) AS order_count,
+        SUM(o.quantity) AS total_sold,
+        SUM(o.quantity * o.price) AS revenue,
+        AVG(r.rating) AS avg_rating
+    FROM products p
+    LEFT JOIN order_items o ON p.product_id = o.product_id
+    LEFT JOIN reviews r ON p.product_id = r.product_id
+    GROUP BY p.product_id, p.product_name, p.category
+)
+SELECT 
+    product_name,
+    category,
+    revenue,
+    ROW_NUMBER() OVER (PARTITION BY category ORDER BY revenue DESC) AS category_rank,
+    RANK() OVER (ORDER BY revenue DESC) AS overall_rank,
+    NTILE(4) OVER (ORDER BY revenue DESC) AS revenue_quartile,
+    ROUND(revenue / SUM(revenue) OVER (PARTITION BY category) * 100, 2) AS pct_category_revenue,
+    ROUND(revenue / SUM(revenue) OVER () * 100, 2) AS pct_total_revenue,
+    ROUND(avg_rating, 2) AS rating,
+    CASE 
+        WHEN ROW_NUMBER() OVER (PARTITION BY category ORDER BY revenue DESC) = 1 
+        THEN 'Category Leader'
+        WHEN NTILE(4) OVER (ORDER BY revenue DESC) = 1 
+        THEN 'Top Performer'
+        ELSE 'Regular'
+    END AS performance_label
+FROM product_performance
+ORDER BY revenue DESC;
+```
+
+---
+
+## 🔄 Pivot and Unpivot Operations
+
+**Pivot** operations rows-কে columns-এ transform করে, আর **Unpivot** columns-কে rows-এ transform করে। MySQL-এ built-in PIVOT syntax নেই, তাই CASE statements এবং aggregations ব্যবহার করতে হয়।
+
+### 📖 Pivot Operations
+
+**Pivot** করলে row data column headers হয়ে যায়।
+
+**Easy Example 1: Monthly sales pivot**
+```sql
+SELECT 
+    product_name,
+    SUM(CASE WHEN MONTH(order_date) = 1 THEN quantity ELSE 0 END) AS Jan,
+    SUM(CASE WHEN MONTH(order_date) = 2 THEN quantity ELSE 0 END) AS Feb,
+    SUM(CASE WHEN MONTH(order_date) = 3 THEN quantity ELSE 0 END) AS Mar,
+    SUM(CASE WHEN MONTH(order_date) = 4 THEN quantity ELSE 0 END) AS Apr
+FROM orders
+WHERE YEAR(order_date) = 2024
+GROUP BY product_name;
+```
+
+**Easy Example 2: Department headcount by location**
+```sql
+SELECT 
+    department,
+    SUM(CASE WHEN location = 'Dhaka' THEN 1 ELSE 0 END) AS Dhaka,
+    SUM(CASE WHEN location = 'Chittagong' THEN 1 ELSE 0 END) AS Chittagong,
+    SUM(CASE WHEN location = 'Sylhet' THEN 1 ELSE 0 END) AS Sylhet,
+    COUNT(*) AS Total
+FROM employees
+GROUP BY department;
+```
+
+**Complex Example: Multi-dimensional pivot**
+```sql
+-- Comprehensive sales analysis: Products × Quarters × Metrics
+WITH quarterly_sales AS (
+    SELECT 
+        p.category,
+        p.product_name,
+        CONCAT('Q', QUARTER(o.order_date)) AS quarter,
+        YEAR(o.order_date) AS year,
+        SUM(oi.quantity) AS units_sold,
+        SUM(oi.quantity * oi.price) AS revenue,
+        COUNT(DISTINCT o.customer_id) AS unique_customers
+    FROM products p
+    JOIN order_items oi ON p.product_id = oi.product_id
+    JOIN orders o ON oi.order_id = o.order_id
+    WHERE o.order_date >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)
+    GROUP BY p.category, p.product_name, QUARTER(o.order_date), YEAR(o.order_date)
+)
+SELECT 
+    category,
+    product_name,
+    -- Q1 Metrics
+    SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END) AS Q1_Revenue,
+    SUM(CASE WHEN quarter = 'Q1' THEN units_sold ELSE 0 END) AS Q1_Units,
+    SUM(CASE WHEN quarter = 'Q1' THEN unique_customers ELSE 0 END) AS Q1_Customers,
+    -- Q2 Metrics
+    SUM(CASE WHEN quarter = 'Q2' THEN revenue ELSE 0 END) AS Q2_Revenue,
+    SUM(CASE WHEN quarter = 'Q2' THEN units_sold ELSE 0 END) AS Q2_Units,
+    SUM(CASE WHEN quarter = 'Q2' THEN unique_customers ELSE 0 END) AS Q2_Customers,
+    -- Q3 Metrics
+    SUM(CASE WHEN quarter = 'Q3' THEN revenue ELSE 0 END) AS Q3_Revenue,
+    SUM(CASE WHEN quarter = 'Q3' THEN units_sold ELSE 0 END) AS Q3_Units,
+    SUM(CASE WHEN quarter = 'Q3' THEN unique_customers ELSE 0 END) AS Q3_Customers,
+    -- Q4 Metrics
+    SUM(CASE WHEN quarter = 'Q4' THEN revenue ELSE 0 END) AS Q4_Revenue,
+    SUM(CASE WHEN quarter = 'Q4' THEN units_sold ELSE 0 END) AS Q4_Units,
+    SUM(CASE WHEN quarter = 'Q4' THEN unique_customers ELSE 0 END) AS Q4_Customers,
+    -- Totals and Analytics
+    SUM(revenue) AS Total_Revenue,
+    SUM(units_sold) AS Total_Units,
+    ROUND(AVG(revenue), 2) AS Avg_Quarterly_Revenue,
+    -- Growth calculations
+    ROUND(
+        ((SUM(CASE WHEN quarter = 'Q4' THEN revenue ELSE 0 END) - 
+          SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END)) /
+         NULLIF(SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END), 0)) * 100,
+        2
+    ) AS YoY_Growth_Pct,
+    -- Identify best quarter
+    CASE 
+        WHEN SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END) >= 
+             GREATEST(
+                 SUM(CASE WHEN quarter = 'Q2' THEN revenue ELSE 0 END),
+                 SUM(CASE WHEN quarter = 'Q3' THEN revenue ELSE 0 END),
+                 SUM(CASE WHEN quarter = 'Q4' THEN revenue ELSE 0 END)
+             ) THEN 'Q1'
+        WHEN SUM(CASE WHEN quarter = 'Q2' THEN revenue ELSE 0 END) >= 
+             GREATEST(
+                 SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END),
+                 SUM(CASE WHEN quarter = 'Q3' THEN revenue ELSE 0 END),
+                 SUM(CASE WHEN quarter = 'Q4' THEN revenue ELSE 0 END)
+             ) THEN 'Q2'
+        WHEN SUM(CASE WHEN quarter = 'Q3' THEN revenue ELSE 0 END) >= 
+             GREATEST(
+                 SUM(CASE WHEN quarter = 'Q1' THEN revenue ELSE 0 END),
+                 SUM(CASE WHEN quarter = 'Q2' THEN revenue ELSE 0 END),
+                 SUM(CASE WHEN quarter = 'Q4' THEN revenue ELSE 0 END)
+             ) THEN 'Q3'
+        ELSE 'Q4'
+    END AS Best_Quarter
+FROM quarterly_sales
+GROUP BY category, product_name
+HAVING Total_Revenue > 0
+ORDER BY category, Total_Revenue DESC;
+```
+
+---
+
+### 📖 Unpivot Operations
+
+**Unpivot** করলে column headers row data হয়ে যায়।
+
+**Easy Example 1: Quarterly scores to rows**
+```sql
+-- Original table: student_id, Q1, Q2, Q3, Q4
+-- Target: student_id, quarter, score
+SELECT student_id, 'Q1' AS quarter, Q1 AS score FROM student_scores WHERE Q1 IS NOT NULL
+UNION ALL
+SELECT student_id, 'Q2' AS quarter, Q2 AS score FROM student_scores WHERE Q2 IS NOT NULL
+UNION ALL
+SELECT student_id, 'Q3' AS quarter, Q3 AS score FROM student_scores WHERE Q3 IS NOT NULL
+UNION ALL
+SELECT student_id, 'Q4' AS quarter, Q4 AS score FROM student_scores WHERE Q4 IS NOT NULL
+ORDER BY student_id, quarter;
+```
+
+**Easy Example 2: Monthly sales columns to rows**
+```sql
+-- Transform: product_id, jan_sales, feb_sales, mar_sales
+-- To: product_id, month, sales
+SELECT product_id, 'January' AS month, jan_sales AS sales FROM monthly_sales
+UNION ALL
+SELECT product_id, 'February' AS month, feb_sales AS sales FROM monthly_sales
+UNION ALL
+SELECT product_id, 'March' AS month, mar_sales AS sales FROM monthly_sales
+ORDER BY product_id, 
+    CASE month
+        WHEN 'January' THEN 1
+        WHEN 'February' THEN 2
+        WHEN 'March' THEN 3
+    END;
+```
+
+**Complex Example: Multi-metric unpivot**
+```sql
+-- Complex unpivoting with multiple metrics
+-- Source: Wide format with multiple measure columns
+-- Target: Long format (entity, metric_name, metric_value, period)
+
+WITH sales_data AS (
+    SELECT 
+        'Product A' AS product,
+        1000 AS Q1_Revenue, 50 AS Q1_Units, 20 AS Q1_Orders,
+        1200 AS Q2_Revenue, 60 AS Q2_Units, 25 AS Q2_Orders,
+        1500 AS Q3_Revenue, 75 AS Q3_Units, 30 AS Q3_Orders,
+        1800 AS Q4_Revenue, 90 AS Q4_Units, 35 AS Q4_Orders
+),
+unpivoted AS (
+    -- Q1 metrics
+    SELECT product, 'Q1' AS quarter, 'Revenue' AS metric, Q1_Revenue AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q1' AS quarter, 'Units' AS metric, Q1_Units AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q1' AS quarter, 'Orders' AS metric, Q1_Orders AS value FROM sales_data
+    UNION ALL
+    -- Q2 metrics
+    SELECT product, 'Q2' AS quarter, 'Revenue' AS metric, Q2_Revenue AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q2' AS quarter, 'Units' AS metric, Q2_Units AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q2' AS quarter, 'Orders' AS metric, Q2_Orders AS value FROM sales_data
+    UNION ALL
+    -- Q3 metrics
+    SELECT product, 'Q3' AS quarter, 'Revenue' AS metric, Q3_Revenue AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q3' AS quarter, 'Units' AS metric, Q3_Units AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q3' AS quarter, 'Orders' AS metric, Q3_Orders AS value FROM sales_data
+    UNION ALL
+    -- Q4 metrics
+    SELECT product, 'Q4' AS quarter, 'Revenue' AS metric, Q4_Revenue AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q4' AS quarter, 'Units' AS metric, Q4_Units AS value FROM sales_data
+    UNION ALL
+    SELECT product, 'Q4' AS quarter, 'Orders' AS metric, Q4_Orders AS value FROM sales_data
+)
+SELECT 
+    product,
+    quarter,
+    metric,
+    value,
+    -- Add period ordering
+    CASE quarter
+        WHEN 'Q1' THEN 1
+        WHEN 'Q2' THEN 2
+        WHEN 'Q3' THEN 3
+        WHEN 'Q4' THEN 4
+    END AS quarter_num,
+    -- Calculate quarter-over-quarter growth
+    ROUND(
+        ((value - LAG(value) OVER (PARTITION BY product, metric ORDER BY quarter)) /
+         NULLIF(LAG(value) OVER (PARTITION BY product, metric ORDER BY quarter), 0)) * 100,
+        2
+    ) AS qoq_growth_pct,
+    -- Running total per metric
+    SUM(value) OVER (PARTITION BY product, metric ORDER BY quarter) AS running_total,
+    -- Average per metric
+    ROUND(AVG(value) OVER (PARTITION BY product, metric), 2) AS metric_avg
+FROM unpivoted
+ORDER BY product, metric, quarter;
+```
+
+---
+
+## 🔧 Dynamic SQL
+
+**Dynamic SQL** allows you to build and execute SQL statements at runtime. এটি flexible queries তৈরি করতে, table/column names dynamically নির্ধারণ করতে এবং conditional logic implement করতে ব্যবহৃত হয়।
+
+### 📖 PREPARE, EXECUTE, DEALLOCATE
+
+**Easy Example 1: Simple dynamic query**
+```sql
+-- Prepare a statement
+SET @table_name = 'employees';
+SET @query = CONCAT('SELECT COUNT(*) FROM ', @table_name);
+PREPARE stmt FROM @query;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+```
+
+**Easy Example 2: Dynamic WHERE clause**
+```sql
+SET @min_salary = 50000;
+SET @department = 'IT';
+SET @sql = CONCAT(
+    'SELECT name, salary, department FROM employees WHERE salary > ',
+    @min_salary,
+    ' AND department = ''',
+    @department,
+    ''''
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+```
+
+**Complex Example: Dynamic report generator**
+```sql
+DELIMITER //
+
+CREATE PROCEDURE generate_dynamic_report(
+    IN p_table_name VARCHAR(64),
+    IN p_group_column VARCHAR(64),
+    IN p_aggregate_column VARCHAR(64),
+    IN p_filter_column VARCHAR(64),
+    IN p_filter_value VARCHAR(255)
+)
+BEGIN
+    SET @sql = CONCAT(
+        'SELECT ',
+        p_group_column, ' AS Category, ',
+        'COUNT(*) AS Record_Count, ',
+        'SUM(', p_aggregate_column, ') AS Total, ',
+        'AVG(', p_aggregate_column, ') AS Average, ',
+        'MIN(', p_aggregate_column, ') AS Minimum, ',
+        'MAX(', p_aggregate_column, ') AS Maximum ',
+        'FROM ', p_table_name, ' '
+    );
+    
+    -- Add WHERE clause if filter provided
+    IF p_filter_column IS NOT NULL AND p_filter_value IS NOT NULL THEN
+        SET @sql = CONCAT(@sql, 
+            'WHERE ', p_filter_column, ' = ''', p_filter_value, ''' '
+        );
+    END IF;
+    
+    -- Add GROUP BY
+    SET @sql = CONCAT(@sql, 
+        'GROUP BY ', p_group_column, ' ',
+        'ORDER BY Total DESC'
+    );
+    
+    -- Execute
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+-- Usage
+CALL generate_dynamic_report('orders', 'customer_id', 'order_total', 'status', 'Completed');
+```
+
+---
+
+### 📖 Dynamic Table Operations
+
+**Easy Example 1: Create table dynamically**
+```sql
+SET @table_name = 'temp_report_2025';
+SET @sql = CONCAT(
+    'CREATE TABLE IF NOT EXISTS ', @table_name, ' (',
+    'id INT PRIMARY KEY AUTO_INCREMENT, ',
+    'report_date DATE, ',
+    'metric_value DECIMAL(10,2), ',
+    'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    ')'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+```
+
+**Easy Example 2: Dynamic INSERT**
+```sql
+SET @table_name = 'audit_log';
+SET @user_name = 'john_doe';
+SET @action = 'LOGIN';
+SET @sql = CONCAT(
+    'INSERT INTO ', @table_name, ' (username, action, timestamp) ',
+    'VALUES (''', @user_name, ''', ''', @action, ''', NOW())'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+```
+
+**Complex Example: Dynamic pivot query builder**
+```sql
+DELIMITER //
+
+CREATE PROCEDURE create_pivot_report(
+    IN p_source_table VARCHAR(64),
+    IN p_row_field VARCHAR(64),
+    IN p_column_field VARCHAR(64),
+    IN p_value_field VARCHAR(64)
+)
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE col_name VARCHAR(255);
+    DECLARE pivot_columns TEXT DEFAULT '';
+    DECLARE cur CURSOR FOR 
+        SELECT DISTINCT CONCAT('`', p_column_field, '`') AS col
+        FROM (
+            SELECT * FROM information_schema.tables WHERE 1=1
+        ) t;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- Build dynamic column list
+    SET @get_columns = CONCAT(
+        'SELECT DISTINCT ', p_column_field, ' INTO @cols ',
+        'FROM ', p_source_table, ' ',
+        'ORDER BY ', p_column_field
+    );
+    
+    -- Build CASE statements for each column
+    SET @sql = CONCAT(
+        'SELECT ', p_row_field, ', '
+    );
+    
+    -- This is simplified - in practice, you'd need to fetch distinct values first
+    SET @sql = CONCAT(@sql,
+        'SUM(CASE WHEN ', p_column_field, ' = ''Value1'' THEN ', p_value_field, ' ELSE 0 END) AS Value1, ',
+        'SUM(CASE WHEN ', p_column_field, ' = ''Value2'' THEN ', p_value_field, ' ELSE 0 END) AS Value2 ',
+        'FROM ', p_source_table, ' ',
+        'GROUP BY ', p_row_field
+    );
+    
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+```
+
+---
+
+### 📖 Dynamic Stored Procedures
+
+**Easy Example 1: Conditional column selection**
+```sql
+DELIMITER //
+
+CREATE PROCEDURE get_employee_data(
+    IN p_include_salary BOOLEAN,
+    IN p_include_bonus BOOLEAN
+)
+BEGIN
+    SET @sql = 'SELECT id, name, department';
+    
+    IF p_include_salary THEN
+        SET @sql = CONCAT(@sql, ', salary');
+    END IF;
+    
+    IF p_include_bonus THEN
+        SET @sql = CONCAT(@sql, ', bonus');
+    END IF;
+    
+    SET @sql = CONCAT(@sql, ' FROM employees');
+    
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+CALL get_employee_data(TRUE, FALSE);  -- Include salary, exclude bonus
+```
+
+**Easy Example 2: Dynamic sorting**
+```sql
+DELIMITER //
+
+CREATE PROCEDURE get_sorted_data(
+    IN p_sort_column VARCHAR(64),
+    IN p_sort_direction VARCHAR(4)
+)
+BEGIN
+    SET @allowed_columns = 'name,salary,department,join_date';
+    
+    -- Validate sort column
+    IF FIND_IN_SET(p_sort_column, @allowed_columns) = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Invalid sort column';
+    END IF;
+    
+    -- Validate sort direction
+    IF p_sort_direction NOT IN ('ASC', 'DESC') THEN
+        SET p_sort_direction = 'ASC';
+    END IF;
+    
+    SET @sql = CONCAT(
+        'SELECT * FROM employees ORDER BY ',
+        p_sort_column, ' ', p_sort_direction
+    );
+    
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+CALL get_sorted_data('salary', 'DESC');
+```
+
+**Complex Example: Advanced dynamic query builder**
+```sql
+DELIMITER //
+
+CREATE PROCEDURE advanced_search(
+    IN p_search_table VARCHAR(64),
+    IN p_search_fields TEXT,        -- Comma-separated: 'field1,field2,field3'
+    IN p_filter_conditions TEXT,     -- JSON format or special syntax
+    IN p_sort_by VARCHAR(64),
+    IN p_sort_order VARCHAR(4),
+    IN p_limit INT
+)
+BEGIN
+    DECLARE v_sql TEXT;
+    DECLARE v_where_clause TEXT DEFAULT '';
+    
+    -- Build SELECT clause
+    IF p_search_fields IS NULL OR p_search_fields = '' THEN
+        SET v_sql = CONCAT('SELECT * FROM ', p_search_table);
+    ELSE
+        SET v_sql = CONCAT('SELECT ', p_search_fields, ' FROM ', p_search_table);
+    END IF;
+    
+    -- Build WHERE clause (simplified - in production, parse JSON properly)
+    IF p_filter_conditions IS NOT NULL AND p_filter_conditions != '' THEN
+        SET v_where_clause = CONCAT(' WHERE ', p_filter_conditions);
+        SET v_sql = CONCAT(v_sql, v_where_clause);
+    END IF;
+    
+    -- Add ORDER BY
+    IF p_sort_by IS NOT NULL THEN
+        SET v_sql = CONCAT(v_sql, ' ORDER BY ', p_sort_by);
+        
+        IF p_sort_order IN ('ASC', 'DESC') THEN
+            SET v_sql = CONCAT(v_sql, ' ', p_sort_order);
+        END IF;
+    END IF;
+    
+    -- Add LIMIT
+    IF p_limit IS NOT NULL AND p_limit > 0 THEN
+        SET v_sql = CONCAT(v_sql, ' LIMIT ', p_limit);
+    END IF;
+    
+    -- Log the query (for debugging)
+    SELECT v_sql AS generated_query;
+    
+    -- Execute
+    SET @final_sql = v_sql;
+    PREPARE stmt FROM @final_sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+
+-- Usage examples
+CALL advanced_search('employees', 'id,name,salary,department', 'salary > 50000 AND department = ''IT''', 'salary', 'DESC', 10);
+CALL advanced_search('orders', 'order_id,customer_id,order_total', 'order_date >= ''2024-01-01''', 'order_date', 'DESC', 50);
+```
+
+---
+
+### ⚠️ Dynamic SQL Security Considerations
+
+**SQL Injection Prevention:**
+
+```sql
+-- ❌ BAD: Vulnerable to SQL injection
+SET @user_input = "'; DROP TABLE users; --";
+SET @sql = CONCAT('SELECT * FROM users WHERE name = ''', @user_input, '''');
+
+-- ✅ GOOD: Use prepared statements with parameters
+PREPARE stmt FROM 'SELECT * FROM users WHERE name = ?';
+SET @safe_input = @user_input;
+EXECUTE stmt USING @safe_input;
+DEALLOCATE PREPARE stmt;
+
+-- ✅ GOOD: Validate and sanitize inputs
+DELIMITER //
+
+CREATE PROCEDURE safe_dynamic_query(IN p_table_name VARCHAR(64))
+BEGIN
+    DECLARE v_allowed_tables TEXT DEFAULT 'employees,orders,products,customers';
+    
+    -- Whitelist validation
+    IF FIND_IN_SET(p_table_name, v_allowed_tables) = 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Table not allowed';
+    END IF;
+    
+    -- Now safe to use
+    SET @sql = CONCAT('SELECT COUNT(*) FROM ', p_table_name);
+    PREPARE stmt FROM @sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+END //
+
+DELIMITER ;
+```
 
 ---
 
